@@ -9,7 +9,8 @@ import {
   ScrollView 
 } from 'react-native';
 import { lightTheme } from '../../styles/theme';
-import { useSupabase } from '../../hooks/useSupabase';
+import { useSupabase } from '../../hooks/useSupabase'; 
+import { authService } from '../../utils/supabaseService';
 
 export default function SignUpScreen({ navigation, route }) {
   const { role } = route.params; // 'worker' or 'employer' from previous screen
@@ -38,49 +39,39 @@ export default function SignUpScreen({ navigation, route }) {
       return;
     }
 
-    try {
-      // TYPE A API Call - User registration
-      const { data: authData, error: authError } = await typeACall(
-        'SIGN_UP',
-        () => supabase.auth.signUp({
+     try {
+    // TYPE A API Call - User registration
+    const { data: authData, error: authError } = await authService.signUp(
+      formData.email, 
+      formData.password
+    );
+
+    if (authError) throw authError;
+
+    if (authData.user) {
+      // TYPE A API Call - Create profile
+      const { error: profileError } = await authService.createProfile({
+        id: authData.user.id,
+        email: formData.email,
+        role: role,
+        is_profile_complete: false,
+        created_at: new Date().toISOString(),
+      });
+
+      if (profileError) throw profileError;
+
+      // Success - navigate to Profile Completion screen
+      Alert.alert(
+        'Success', 
+        'Account created! Please complete your profile.',
+        [{ text: 'OK', onPress: () => navigation.navigate('CompleteProfile', { 
+          userId: authData.user.id,
           email: formData.email,
-          password: formData.password,
-        })
+          role: role 
+        })}]
       );
-
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // TYPE A API Call - Create profile
-        const { error: profileError } = await typeACall(
-          'CREATE_PROFILE',
-          () => supabase
-            .from('profiles')
-            .insert([
-              {
-                id: authData.user.id,
-                email: formData.email,
-                role: role,
-                is_profile_complete: false, // Profile not complete yet
-                created_at: new Date().toISOString(),
-              }
-            ])
-        );
-
-        if (profileError) throw profileError;
-
-        // Success - navigate to Profile Completion screen
-        Alert.alert(
-          'Success', 
-          'Account created! Please complete your profile.',
-          [{ text: 'OK', onPress: () => navigation.navigate('CompleteProfile', { 
-            userId: authData.user.id,
-            email: formData.email,
-            role: role 
-          })}]
-        );
-      }
-    } catch (error) {
+    }
+  } catch (error) {
       console.error('Sign up error:', error);
       
       // Handle specific Supabase errors
