@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { lightTheme } from '../../styles/theme';
 import { authService } from '../../utils/supabaseService';
-import { storageService } from '../../utils/storageService'; // ✅ ADD THIS IMPORT
+import { storageService } from '../../utils/storageService';
 import LocationField from './profile/components/LocationField';
 
 export default function CompleteProfileScreen({ navigation, route }) {
@@ -18,7 +18,6 @@ export default function CompleteProfileScreen({ navigation, route }) {
   
   const [formData, setFormData] = useState({
     full_name: '',
-    bio: '',
     location_city: '',
   });
   const [loading, setLoading] = useState(false);
@@ -41,7 +40,6 @@ export default function CompleteProfileScreen({ navigation, route }) {
       const { error } = await authService.updateProfile({
         id: userId,
         full_name: formData.full_name,
-        bio: formData.bio,
         location_city: formData.location_city,
         is_profile_complete: true, // Mark profile as complete
         updated_at: new Date().toISOString(),
@@ -55,9 +53,9 @@ export default function CompleteProfileScreen({ navigation, route }) {
         email: email,
         role: role,
         full_name: formData.full_name,
-        bio: formData.bio,
         location_city: formData.location_city,
         is_profile_complete: true,
+        // Removed has_bio and has_profile_pic - we'll track these locally for now
         updated_at: new Date().toISOString(),
       };
       
@@ -66,7 +64,7 @@ export default function CompleteProfileScreen({ navigation, route }) {
 
       Alert.alert(
         'Welcome to cazzijobz!',
-        '',
+        'Your profile is ready. You can add more details later.',
         [{ text: 'Get Started', onPress: () => navigation.navigate('Main') }]
       );
     } catch (error) {
@@ -97,7 +95,7 @@ export default function CompleteProfileScreen({ navigation, route }) {
       </Text>
       
       <Text style={[styles.subtitle, { color: lightTheme.colors.text }]}>
-        Complete your profile to get started
+        Just two quick details to get started
       </Text>
 
       <View style={styles.form}>
@@ -134,30 +132,12 @@ export default function CompleteProfileScreen({ navigation, route }) {
           label="Location *"
         />
 
-        {/* Bio/Information */}
-        <Text style={[styles.label, { color: lightTheme.colors.text }]}>
-          {role === 'worker' ? 'Bio (Optional)' : 'Information (Optional)'}
-        </Text>
-        <TextInput
-          style={[styles.input, styles.textArea, { 
-            backgroundColor: lightTheme.colors.card,
-            borderColor: lightTheme.colors.border,
-            color: lightTheme.colors.text 
-          }]}
-          placeholder={role === 'worker' 
-            ? 'Tell employers about your skills and experience...' 
-            : 'Tell workers about your business or needs...'
-          }
-          placeholderTextColor={lightTheme.colors.placeholder}
-          value={formData.bio}
-          onChangeText={(text) => updateFormData('bio', text)}
-          multiline
-          numberOfLines={3}
-          maxLength={250}
-        />
-        <Text style={[styles.charCount, { color: lightTheme.colors.placeholder }]}>
-          {formData.bio.length}/250 characters
-        </Text>
+        {/* Quick Tip */}
+        <View style={styles.tipContainer}>
+          <Text style={[styles.tipText, { color: lightTheme.colors.placeholder }]}>
+            💡 You can add a profile picture and bio later in the app
+          </Text>
+        </View>
 
         {/* Complete Button */}
         <TouchableOpacity 
@@ -192,7 +172,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   topSpacer: {
-    height: 20, // Added space at top
+    height: 20,
   },
   title: {
     fontSize: 24,
@@ -210,7 +190,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   label: {
-    fontSize: 14, // Reduced font size
+    fontSize: 14,
     marginBottom: 8,
     fontWeight: '600',
   },
@@ -222,31 +202,34 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   emailText: {
-    fontSize: 14, // Reduced font size
+    fontSize: 14,
   },
   input: {
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
     marginBottom: 20,
-    fontSize: 14, // Reduced font size
+    fontSize: 14,
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  charCount: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: -15,
+  tipContainer: {
+    backgroundColor: lightTheme.colors.card,
+    padding: 15,
+    borderRadius: 8,
     marginBottom: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: lightTheme.colors.primary,
+  },
+  tipText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 16,
   },
   completeButton: {
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 10,
-    marginBottom: 30, // Added bottom margin
+    marginBottom: 30,
   },
   completeButtonText: {
     color: 'white',
@@ -254,6 +237,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   bottomSpacer: {
-    height: 20, // Extra space at bottom
+    height: 20,
   },
 });

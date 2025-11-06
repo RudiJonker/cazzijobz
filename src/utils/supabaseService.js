@@ -1,5 +1,7 @@
 // src/utils/supabaseService.js
 import { supabase } from './supabaseClient';
+import * as FileSystem from 'expo-file-system/legacy';
+
 
 let localApiCallCount = 0;
 
@@ -77,6 +79,76 @@ export const authService = {
       .select('*')
       .eq('id', userId)
       .single();
+  },
+
+  // ✅ NEW: Profile Picture Upload Function
+  uploadProfileImage: async (imageUri, fileName, userId = null) => {
+  await trackApiCall('TYPE_A', 'UPLOAD_PROFILE_IMAGE', userId);
+  
+  try {
+    // Use the new FileSystem API
+    const fileInfo = await FileSystem.getInfoAsync(imageUri);
+    if (!fileInfo.exists) {
+      throw new Error('File does not exist');
+    }
+
+    // Read file as base64 using the new API
+    const fileContent = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // Determine file type
+    const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('profile-pictures')
+      .upload(fileName, decodeBase64(fileContent), {
+        contentType: contentType,
+        upsert: true
+      });
+
+    if (error) throw error;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('profile-pictures')
+      .getPublicUrl(fileName);
+
+    return {
+      data: {
+        publicUrl: urlData.publicUrl,
+        fileName: fileName
+      },
+      error: null
+    };
+
+  } catch (error) {
+    console.error('Profile image upload error:', error);
+    return {
+      data: null,
+      error: error
+    };
+  }
+},
+
+  // ✅ NEW: Delete Profile Picture
+  deleteProfileImage: async (fileName, userId = null) => {
+    await trackApiCall('TYPE_A', 'DELETE_PROFILE_IMAGE', userId);
+    
+    try {
+      const { data, error } = await supabase.storage
+        .from('profile-pictures')
+        .remove([fileName]);
+
+      if (error) throw error;
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('Profile image delete error:', error);
+      return { data: null, error };
+    }
   }
 };
 
@@ -116,6 +188,21 @@ export const adminService = {
       totalEmployers,
       totalApiCalls
     };
+  }
+};
+
+// ✅ NEW: Helper function to decode base64 to Uint8Array
+const decodeBase64 = (base64) => {
+  try {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  } catch (error) {
+    console.error('Base64 decode error:', error);
+    throw new Error('Failed to process image');
   }
 };
 

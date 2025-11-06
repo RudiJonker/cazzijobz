@@ -1,4 +1,4 @@
-PROJECT SUMMARY: cazzijobz
+Cazzijobz Project Summary
 📱 App Overview
 Name: cazzijobz (Casual Jobs)
 Mission: Community-driven platform connecting people offering casual labor (Workers) with those needing tasks done (Employers)
@@ -21,39 +21,71 @@ Testing: Windows 10 + Android USB
 
 🏗 Architecture Foundation
 API Call Strategy
-text
-Type A (Immediate): Signup, Initial Profile Completion, Critical Actions
-Type B (Debounced): Profile Updates, Non-critical Changes
+Type A (Immediate): Critical actions that need instant server sync
+
+Signup, Login, Initial Profile Completion
+
+Job posting, Job applications, Hiring decisions
+
+Type B (Debounced): Non-critical updates that can be batched
+
+Profile updates (name, bio, location, profile_pic)
+
+Preference changes
+
+Status updates
+
 Timing Configuration:
 
 Development: 1-minute timeout between Type B calls
 
 Production: 5-minute timeout between Type B calls
 
-Location: useProfileSync.js constants
+Location: src/hooks/useProfileSync.js constants
 
 AsyncStorage Strategy
 Latest Data Wins: Subsequent changes overwrite previous pending changes
 
 Automatic Retry: Failed syncs remain in storage for retry
 
-Manual Trigger: Save button initiates timing checks
+Cross-session Persistence: Pending changes survive logout/login cycles
 
-Storage Keys: last_profile_sync, pending_profile_changes
+Storage Keys: userProfile, pending_profile_changes, last_api_call, isAdmin, authToken
 
 File Structure
 text
 src/
-├── navigation/           # App navigation structure
+├── navigation/
+│   ├── AppNavigator.js          # Root navigator (Auth/Main stacks)
+│   ├── AuthNavigator.js         # Authentication flow
+│   ├── MainNavigator.js         # Main app tabs (Home, Profile, Admin)
+│   └── NavigationConstants.js   # Route names
 ├── screens/
-│   ├── auth/            # Authentication flow
-│   ├── shared/          # Shared components
-│   │   └── profile/     # Profile management
-│   ├── employer/        # Employer-specific screens
-│   └── worker/          # Worker-specific screens
-├── hooks/               # Custom React hooks
-├── utils/               # Utilities & services
-└── styles/              # Theming system
+│   ├── auth/                    # Authentication flow
+│   │   ├── WelcomeScreen.js     # Role selection
+│   │   ├── TermsScreen.js       # Terms acceptance
+│   │   ├── SignUpScreen.js      # User registration
+│   │   └── LoginScreen.js       # User login
+│   ├── shared/                  # Shared components
+│   │   ├── profile/             # Profile management
+│   │   │   ├── ProfileScreen.js # Main profile editor
+│   │   │   └── components/      # Profile form fields
+│   │   ├── CompleteProfileScreen.js # Initial profile setup
+│   │   ├── HomeScreen.js        # Main dashboard
+│   │   └── AdminScreen.js       # Admin panel
+│   ├── employer/                # Employer-specific screens
+│   └── worker/                  # Worker-specific screens
+├── hooks/
+│   ├── useSupabase.js           # API call management
+│   └── useProfileSync.js        # Smart profile synchronization
+├── utils/
+│   ├── supabaseClient.js        # Supabase configuration
+│   ├── supabaseService.js       # API service layer
+│   ├── storageService.js        # AsyncStorage wrapper
+│   └── debounce.js              # Debounce utility
+└── styles/
+    └── theme.js                 # Theming system (light/dark)
+
 ✅ Current Progress (Working Features)
 1. Authentication Flow ✅
 Welcome screen with role selection (Worker/Employer)
@@ -64,14 +96,17 @@ Email/password signup with validation
 
 Automatic profile creation in Supabase
 
+Login with session persistence
+
 2. Database Schema ✅
 Profiles Table:
 
 sql
 id (UUID, primary key)
 email (TEXT, required)
-role (TEXT: 'worker'/'employer', required)  
+role (TEXT: 'worker'/'employer', required)
 is_profile_complete (BOOLEAN, default false)
+is_admin (BOOLEAN, default false)
 full_name (TEXT)
 bio (TEXT, 250 char limit)
 location_city (TEXT)
@@ -82,7 +117,7 @@ Storage Bucket: profile-pictures ✅
 
 3. Navigation Structure ✅
 text
-Welcome → Role Selection → Terms → SignUp → CompleteProfile
+Welcome → Role Selection → Terms → SignUp → CompleteProfile → Main (Home/Profile/Admin) (rudijonker@gmail.com = Admin user)
 4. Theme System ✅
 Comprehensive color palette (light/dark themes)
 
@@ -90,10 +125,14 @@ Consistent sizing system
 
 Modular component styling
 
-🔄 API Call Tracking System
+5. API Call Tracking System ✅
 Location: src/utils/supabaseService.js
-Function: Tracks all Supabase calls with counters
-Monitoring: Console logs with call numbers and types
+
+Tracks all Supabase calls with counters
+
+Console logs with call numbers and types
+
+Monitors API usage patterns
 
 Key Functions:
 
@@ -103,30 +142,60 @@ authService.createProfile() - Type A
 
 authService.updateProfile() - Type A (initial) / Type B (updates)
 
+authService.getProfile() - Type A
+
+🔄 Smart Profile Synchronization System
+Core Implementation
+File: src/screens/shared/profile/ProfileScreen.js
+
+Immediate Local Save: User changes saved to AsyncStorage instantly
+
+Timeout-based Sync: Type B calls debounced with configurable timeout
+
+Pending Changes Management: Unsynced changes preserved across sessions
+
+Smart Merge Logic: Local changes merged with server data on login
+
+Key Behavior
+User edits profile → Save to local storage immediately
+
+Check timeout status:
+
+Outside timeout (>1min): Make Type B API call immediately
+
+Within timeout (<1min): Batch changes locally, sync later
+
+Logout/Login: Pending changes preserved and merged
+
+Error Handling: Failed syncs remain in queue for retry
+
+Storage Service Functions
+javascript
+// Core functions in src/utils/storageService.js
+setUserProfile(profile)           // Save user data locally
+getUserProfile()                  // Retrieve user data
+setPendingChanges(changes)        // Store unsynced changes  
+getPendingChanges()               // Get pending changes
+clearPendingChanges()             // Clear after successful sync
+setLastApiCall(timestamp)         // Track API call timing
+getLastApiCall()                  // Check timeout status
+clearUserDataButKeepPendingChanges() // Logout without losing work
 🎯 Next Priority Features
 Immediate (Next Session):
-Complete Profile Screen
+Complete Profile Screen enhancements
 
-Profile picture upload
+Profile picture upload to Supabase Storage
 
-Location detection ("Use my location")
+Location detection with reverse geocoding
 
-Bio/information fields
-
-Save with Type A/B logic
+Role-based navigation flows
 
 Short Term:
-Role-based Navigation
+Worker dashboard (job browsing, applications)
 
-Worker dashboard (job browsing)
+Employer dashboard (job posting, applicant management)
 
-Employer dashboard (job posting)
-
-Job Management
-
-Post jobs (Employers)
-
-Browse/apply jobs (Workers)
+Job management system
 
 Long Term:
 Chat System (post-hire communication)
@@ -135,25 +204,28 @@ Schedule Conflict Prevention
 
 AdMob Integration
 
+
 🔧 Technical Implementation Notes
-Key Custom Hooks:
-useSupabase() - API call management
+Key Custom Hooks
+useSupabase() - API call management and tracking
 
-useProfileSync() - Smart profile synchronization
+useProfileSync() - Smart profile synchronization (future enhancement)
 
-Environment Setup:
+Environment Setup
 Supabase URL: https://wwuqejbsotizqdcwqfpu.supabase.co
 
 Environment variables via transform-inline-environment-variables
 
 Git branches: main (stable), profile-screen (current development)
 
-Performance Considerations:
+Performance Considerations
 Debounced API calls to minimize Supabase usage
 
 Local storage caching for offline capability
 
 Modular component structure for maintainability
+
+Efficient re-rendering with proper state management
 
 🚀 Why This Architecture Works
 Scalable: Modular structure allows easy feature addition
@@ -166,16 +238,55 @@ Maintainable: Clear separation of concerns
 
 Reliable: Robust error handling and data persistence
 
-📋 Immediate Next Steps
-Complete ProfileScreen with all fields
+Offline-capable: Local storage ensures data availability
 
-Implement profile picture upload to Supabase Storage
+📋 Current Implementation Status
+Working Features:
+✅ User authentication and profile management
 
-Add location detection with reverse geocoding
+✅ Type A/B API call strategy with timeouts
 
-Test complete user onboarding flow
+✅ Local storage persistence across sessions
 
-Implement role-based navigation
+✅ Pending changes preservation during logout/login
+
+✅ Admin role detection and navigation
+
+✅ Theme system implementation
+
+Files Recently Modified:
+src/screens/shared/profile/ProfileScreen.js - Main profile editor with timeout logic
+
+src/utils/storageService.js - Enhanced storage with pending changes support
+
+src/screens/auth/LoginScreen.js - Smart login with change merging
+
+src/navigation/MainNavigator.js - Admin detection and tab navigation
+
+Current Focus:
+Profile completion system with smart sync logic and API call optimization. The foundation is solid for building role-specific features.
+
+🔄 API Call Patterns Established
+Type A (Immediate) Examples:
+User registration and login
+
+Initial profile completion
+
+Critical job actions (post, apply, hire)
+
+Payment transactions
+
+Type B (Debounced) Examples:
+Profile field updates
+
+Preference changes
+
+Non-critical status updates
+
+Search filter changes
+
+This architecture should be extended throughout the app as new features are developed, maintaining consistent patterns for API calls, local storage, and user experience.
 
 Last Updated: Current development on profile-screen branch
 Current Focus: Profile completion system with smart sync logic
+Next Session: Role-based navigation and dashboard implementation

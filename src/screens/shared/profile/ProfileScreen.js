@@ -10,9 +10,23 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { lightTheme } from '../../../styles/theme';
-import LocationField from '../profile/components/LocationField';
+import LocationField from './components/LocationField';
+import ProfileImageField from './components/ProfileImageField';
 import { authService } from '../../../utils/supabaseService';
 import { storageService } from '../../../utils/storageService';
+
+// Simple debounce function
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -20,6 +34,7 @@ export default function ProfileScreen() {
     full_name: '',
     bio: '',
     location_city: '',
+    profile_picture_url: null,
   });
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
@@ -37,74 +52,49 @@ export default function ProfileScreen() {
   }, []);
 
   const loadUserProfile = async () => {
-  try {
-    setLoading(true);
-    
-    // ✅ FIRST: Check for pending local changes
-    const pendingChanges = await storageService.getPendingChanges();
-    const localProfile = await storageService.getUserProfile();
-    
-    console.log('🔍 Load check:', { 
-      hasLocalProfile: !!localProfile, 
-      hasPendingChanges: !!pendingChanges 
-    });
-    
-    // ✅ If we have pending changes, use local data (don't overwrite with Supabase)
-    if (pendingChanges && localProfile) {
-      console.log('✅ Using local profile with pending changes');
+    try {
+      setLoading(true);
       
-      // Apply pending changes to the local profile for display
-      const profileWithPendingChanges = { ...localProfile, ...pendingChanges };
-      setFormData({
-        full_name: profileWithPendingChanges.full_name || '',
-        bio: profileWithPendingChanges.bio || '',
-        location_city: profileWithPendingChanges.location_city || '',
-      });
-      setUser(profileWithPendingChanges);
-      setLoading(false);
-      return;
-    }
-    
-    // ✅ If we have local profile but no pending changes, use it
-    if (localProfile) {
-      console.log('✅ Using existing local profile');
-      setFormData({
-        full_name: localProfile.full_name || '',
-        bio: localProfile.bio || '',
-        location_city: localProfile.location_city || '',
-      });
-      setUser(localProfile);
-      setLoading(false);
-      return;
-    }
-
-    // ✅ ONLY if no local data: Fetch from Supabase
-    console.log('🔍 No local profile, fetching from Supabase...');
-    const currentUser = await authService.getCurrentUser();
-    setUser(currentUser);
-
-    if (currentUser) {
-      const { data: profile, error } = await authService.getProfile(currentUser.id);
+      const localProfile = await storageService.getUserProfile();
       
-      if (error) throw error;
-
-      if (profile) {
+      if (localProfile) {
         setFormData({
-          full_name: profile.full_name || '',
-          bio: profile.bio || '',
-          location_city: profile.location_city || '',
+          full_name: localProfile.full_name || '',
+          bio: localProfile.bio || '',
+          location_city: localProfile.location_city || '',
+          profile_picture_url: localProfile.profile_picture_url || null,
         });
-        
-        await storageService.setUserProfile(profile);
+        setUser(localProfile);
+        setLoading(false);
+        return;
       }
+
+      const currentUser = await authService.getCurrentUser();
+      setUser(currentUser);
+
+      if (currentUser) {
+        const { data: profile, error } = await authService.getProfile(currentUser.id);
+        
+        if (error) throw error;
+
+        if (profile) {
+          setFormData({
+            full_name: profile.full_name || '',
+            bio: profile.bio || '',
+            location_city: profile.location_city || '',
+            profile_picture_url: profile.profile_picture_url || null,
+          });
+          
+          await storageService.setUserProfile(profile);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading profile:', error);
+      Alert.alert('Error', 'Failed to load profile data.');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Error loading profile:', error);
-    Alert.alert('Error', 'Failed to load profile data.');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const loadPendingChanges = async () => {
     try {
@@ -149,137 +139,151 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
-    if (!user) {
-      Alert.alert('Error', 'No user logged in.');
-      return;
+  if (!user) {
+    Alert.alert('Error', 'No user logged in.');
+    return;
+  }
+
+  try {
+    setLoading(true);
+    
+    let finalImageUrl = formData.profile_picture_url;
+    
+    // If we have a local image, try to upload it (silently)
+    if (finalImageUrl && finalImageUrl.startsWith('file://')) {
+      console.log('🖼️ Uploading local image to Supabase...');
+      
+      const fileExt = finalImageUrl.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${user.id}/profile_${Date.now()}.${fileExt}`;
+      
+      const { data, error } = await authService.uploadProfileImage(finalImageUrl, fileName, user.id);
+      
+      if (!error && data) {
+        finalImageUrl = data.publicUrl;
+        console.log('✅ Image uploaded successfully');
+      } else {
+        console.log('⚠️ Image upload failed, keeping local version');
+        // Silently fail - keep local image for next try
+      }
     }
 
+    // Prepare changes for profile
     const changes = {
       full_name: formData.full_name,
       bio: formData.bio,
       location_city: formData.location_city,
     };
 
-    try {
-      // ✅ ALWAYS save to local storage immediately
-      const updatedProfile = { ...user, ...changes };
-      await storageService.setUserProfile(updatedProfile);
-      setUser(updatedProfile);
+    // Save to local storage
+    const updatedProfile = { 
+      ...user, 
+      ...changes,
+      profile_picture_url: finalImageUrl
+    };
+    await storageService.setUserProfile(updatedProfile);
+    setUser(updatedProfile);
 
-      // ✅ Check if we can make API call (outside timeout)
-      if (canMakeApiCall()) {
-        // ✅ Outside timeout - MAKE API CALL IMMEDIATELY
-        setLoading(true);
-        
-        console.log('🚀 Making Type B API call (outside timeout)');
-        
-        const { error } = await authService.updateProfile({
-          id: user.id,
-          ...changes,
-          updated_at: new Date().toISOString(),
-        });
-
-        if (error) throw error;
-
-        // Update last API call time
-        const now = new Date().toISOString();
-        await storageService.setLastApiCall(now);
-        setLastApiCall(new Date(now));
-        
-        // Clear any pending changes since we just synced
-        setPendingChanges({});
-        await storageService.clearPendingChanges();
-        
-        Alert.alert('Success', 'Profile saved and synced to server!');
-        console.log('✅ Type B API call completed');
-        
-      } else {
-        // ✅ Still in timeout - SAVE LOCALLY ONLY (batch for later)
-        const newPendingChanges = { ...pendingChanges, ...changes };
-        setPendingChanges(newPendingChanges);
-        await storageService.setPendingChanges(newPendingChanges);
-        
-        Alert.alert('Success', 'Profile saved locally! Changes will sync when ready.');
-        console.log('📝 Changes batched locally (in timeout period)');
-      }
-
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to save profile.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Manual sync for batched changes (optional - can be removed)
-  const handleManualSync = async () => {
-    if (!user || Object.keys(pendingChanges).length === 0) {
-      Alert.alert('Info', 'No pending changes to sync.');
-      return;
-    }
-
-    if (!canMakeApiCall()) {
-      Alert.alert('Please Wait', 'Please wait before syncing again.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      console.log('🚀 Manual sync of batched changes');
+    // Handle API call based on timeout
+    if (canMakeApiCall()) {
+      console.log('🚀 Making Type B API call');
       
       const { error } = await authService.updateProfile({
         id: user.id,
-        ...pendingChanges,
+        ...changes,
         updated_at: new Date().toISOString(),
-      });
+      }, user.id);
 
       if (error) throw error;
 
-      // Update last API call time
       const now = new Date().toISOString();
       await storageService.setLastApiCall(now);
       setLastApiCall(new Date(now));
-
+      
       setPendingChanges({});
       await storageService.clearPendingChanges();
-      Alert.alert('Success', 'Batched changes synced to server!');
-
-    } catch (error) {
-      console.error('Manual sync error:', error);
-      Alert.alert('Error', 'Failed to sync changes.');
-    } finally {
-      setLoading(false);
+      
+      // ONE simple success message
+      Alert.alert('Success', 'Profile saved successfully!');
+      
+    } else {
+      const newPendingChanges = { ...pendingChanges, ...changes };
+      setPendingChanges(newPendingChanges);
+      await storageService.setPendingChanges(newPendingChanges);
+      
+      // ONE simple success message
+      Alert.alert('Success', 'Profile saved successfully!');
     }
+
+  } catch (error) {
+    console.error('Error saving profile:', error);
+    Alert.alert('Error', 'Failed to save profile. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  const handleImageChange = (imageUrl) => {
+    setFormData(prev => ({
+      ...prev,
+      profile_picture_url: imageUrl
+    }));
   };
 
+  // Calculate profile completion
+  const getProfileCompletion = () => {
+  if (!user) return { completed: 0, total: 4, percentage: 0 };
+  
+  let completed = 0;
+  const total = 4; // Name, Location, Bio, Profile Picture
+  
+  // Name completion (required, always complete after signup)
+  if (formData.full_name && formData.full_name.trim().length > 0) completed++;
+  
+  // Location completion (required, always complete after signup)  
+  if (formData.location_city && formData.location_city.trim().length > 0) completed++;
+  
+  // Bio completion (optional)
+  if (formData.bio && formData.bio.trim().length > 0) completed++;
+  
+  // Profile picture completion (optional)
+  if (formData.profile_picture_url) completed++;
+  
+  const percentage = Math.round((completed / total) * 100);
+  
+  return { 
+    completed, 
+    total,
+    percentage
+  };
+};
+
+  const completion = getProfileCompletion();
+
   const handleSignOut = async () => {
-  Alert.alert(
-    'Sign Out',
-    'Are you sure you want to sign out?',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Sign Out', 
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            // ✅ Clear user data BUT preserve pending changes
-            await storageService.clearUserDataButKeepPendingChanges();
-            
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Auth' }],
-            });
-            console.log('✅ Signed out, pending changes preserved');
-          } catch (error) {
-            console.error('Sign out error:', error);
-            Alert.alert('Error', 'Failed to sign out.');
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await storageService.clearUserDataButKeepPendingChanges();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Auth' }],
+              });
+            } catch (error) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out.');
+            }
           }
         }
-      }
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const updateFormData = (field, value) => {
     setFormData(prev => ({
@@ -303,11 +307,46 @@ export default function ProfileScreen() {
       style={[styles.container, { backgroundColor: lightTheme.colors.background }]}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={[styles.title, { color: lightTheme.colors.text }]}>
-        My Profile
-      </Text>
+      <Text style={[styles.title, { color: lightTheme.colors.primary }]}>
+  My Profile
+</Text>
+
+      {/* Profile Completion Badge - Only show when NOT 100% */}
+{completion.percentage < 100 && (
+  <View style={styles.completionContainer}>
+    <View style={styles.completionHeader}>
+      <Text style={styles.completionTitle}>Profile Completion</Text>
+      <Text style={styles.completionPercentage}>{completion.percentage}%</Text>
+    </View>
+    <View style={styles.completionBar}>
+      <View 
+        style={[
+          styles.completionProgress, 
+          { width: `${completion.percentage}%` }
+        ]} 
+      />
+    </View>
+    <Text style={styles.completionTip}>
+      {!formData.profile_picture_url && !formData.bio 
+        ? 'Add a photo and bio to complete your profile' 
+        : !formData.profile_picture_url 
+          ? 'Add a profile photo to build trust' 
+          : !formData.bio 
+            ? 'Add a bio to tell others about yourself' 
+            : 'Almost there!'}
+    </Text>
+  </View>
+)}
+
+      {/* Profile Picture */}
+      <ProfileImageField
+        imageUrl={formData.profile_picture_url}
+        onImageChange={handleImageChange}
+        userId={user?.id}
+      />
 
       <View style={styles.form}>
+        {/* Full Name */}
         <Text style={[styles.label, { color: lightTheme.colors.text }]}>
           Full Name
         </Text>
@@ -323,33 +362,43 @@ export default function ProfileScreen() {
           onChangeText={(text) => updateFormData('full_name', text)}
         />
 
+        {/* Location Field */}
         <LocationField
           value={formData.location_city}
           onChange={(location) => updateFormData('location_city', location)}
           label="Location"
         />
 
-        <Text style={[styles.label, { color: lightTheme.colors.text }]}>
-          Bio
-        </Text>
-        <TextInput
-          style={[styles.input, styles.textArea, { 
-            backgroundColor: lightTheme.colors.card,
-            borderColor: lightTheme.colors.border,
-            color: lightTheme.colors.text 
-          }]}
-          placeholder="Tell others about yourself..."
-          placeholderTextColor={lightTheme.colors.placeholder}
-          value={formData.bio}
-          onChangeText={(text) => updateFormData('bio', text)}
-          multiline
-          numberOfLines={3}
-          maxLength={250}
-        />
-        <Text style={[styles.charCount, { color: lightTheme.colors.placeholder }]}>
-          {formData.bio.length}/250 characters
-        </Text>
+        {/* Bio Field */}
+        <View style={styles.bioSection}>
+          <Text style={[styles.label, { color: lightTheme.colors.text }]}>
+            About Me {user?.role === 'worker' && '(Helps get more jobs)'}
+          </Text>
+          <TextInput
+            style={[styles.input, styles.textArea, { 
+              backgroundColor: lightTheme.colors.card,
+              borderColor: lightTheme.colors.border,
+              color: lightTheme.colors.text 
+            }]}
+            placeholder={
+              user?.role === 'worker' 
+                ? 'Tell employers about your skills, experience, and what work you can do...'
+                : 'Tell workers about your business or what kind of work you need...'
+            }
+            placeholderTextColor={lightTheme.colors.placeholder}
+            value={formData.bio}
+            onChangeText={(text) => updateFormData('bio', text)}
+            multiline
+            numberOfLines={4}
+            maxLength={250}
+            textAlignVertical="top"
+          />
+          <Text style={[styles.charCount, { color: lightTheme.colors.placeholder }]}>
+            {formData.bio.length}/250 characters
+          </Text>
+        </View>
 
+        {/* Save Button */}
         <TouchableOpacity 
           style={[
             styles.saveButton, 
@@ -361,20 +410,22 @@ export default function ProfileScreen() {
           disabled={loading}
         >
           <Text style={styles.saveButtonText}>
-            {loading ? 'Saving...' : 'Save'}
+            {loading ? 'Saving...' : 'Save Profile'}
           </Text>
         </TouchableOpacity>
 
+        {/* Sign Out Button */}
         <TouchableOpacity 
           style={[
             styles.signOutButton, 
             { 
-              backgroundColor: lightTheme.colors.error,
+              backgroundColor: lightTheme.colors.card,
+              borderColor: lightTheme.colors.border,
             }
           ]}
           onPress={handleSignOut}
         >
-          <Text style={styles.signOutButtonText}>
+          <Text style={[styles.signOutButtonText, { color: lightTheme.colors.error }]}>
             Sign Out
           </Text>
         </TouchableOpacity>
@@ -394,11 +445,55 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 30,
+    marginBottom: 20,
     textAlign: 'center',
+  },
+  completionContainer: {
+    backgroundColor: lightTheme.colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    borderLeftWidth: 4,
+    borderLeftColor: lightTheme.colors.primary,
+  },
+  completionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  completionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: lightTheme.colors.text,
+  },
+  completionPercentage: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: lightTheme.colors.primary,
+  },
+  completionBar: {
+    height: 6,
+    backgroundColor: lightTheme.colors.background,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  completionProgress: {
+    height: '100%',
+    backgroundColor: lightTheme.colors.primary,
+    borderRadius: 3,
+  },
+  completionTip: {
+    fontSize: 12,
+    color: lightTheme.colors.placeholder,
+    fontStyle: 'italic',
   },
   form: {
     width: '100%',
+  },
+  bioSection: {
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
@@ -409,24 +504,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
-    marginBottom: 20,
+    marginBottom: 8,
     fontSize: 14,
   },
   textArea: {
-    height: 80,
+    height: 100,
     textAlignVertical: 'top',
   },
   charCount: {
     fontSize: 12,
     textAlign: 'right',
-    marginTop: -15,
-    marginBottom: 20,
+    marginTop: 4,
   },
   saveButton: {
-    padding: 15,
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 10,
+    marginBottom: 12,
   },
   saveButtonText: {
     color: 'white',
@@ -434,14 +529,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   signOutButton: {
-    padding: 15,
+    padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
+    borderWidth: 1,
   },
   signOutButtonText: {
-    color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
