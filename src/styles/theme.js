@@ -71,9 +71,7 @@ export const lightTheme = {
     border: COLORS.gray300,
     placeholder: COLORS.gray500,
   },
-  sizes: {
-    ...SIZES
-  }
+  sizes: SIZES  // Make sure this line exists!
 };
 
 // Dark Theme
@@ -98,9 +96,6 @@ export const darkTheme = {
     border: COLORS.gray600,
     placeholder: COLORS.gray400,
   },
-  sizes: {
-    ...SIZES
-  }
+  sizes: SIZES  // Make sure this line exists!
 };
 
-export default { COLORS, SIZES, lightTheme, darkTheme };

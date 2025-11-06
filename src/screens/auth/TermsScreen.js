@@ -113,10 +113,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 4,
   },
   checkboxText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
+    lineHeight: 16,
   },
   acceptText: {
     fontSize: 16,

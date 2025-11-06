@@ -1,0 +1,181 @@
+PROJECT SUMMARY: cazzijobz
+📱 App Overview
+Name: cazzijobz (Casual Jobs)
+Mission: Community-driven platform connecting people offering casual labor (Workers) with those needing tasks done (Employers)
+Target Audience: Lower-income communities worldwide for casual work (gardening, cleaning, construction, domestic work, etc.)
+Location: South Africa focused, globally scalable
+Monetization: Google AdMob (future implementation)
+
+🛠 Tech Stack
+Frontend: React Native + Expo
+
+Backend: Supabase (Auth, Database, Storage)
+
+State Management: React Context + AsyncStorage
+
+Navigation: React Navigation
+
+IDE: VS Code
+
+Testing: Windows 10 + Android USB
+
+🏗 Architecture Foundation
+API Call Strategy
+text
+Type A (Immediate): Signup, Initial Profile Completion, Critical Actions
+Type B (Debounced): Profile Updates, Non-critical Changes
+Timing Configuration:
+
+Development: 1-minute timeout between Type B calls
+
+Production: 5-minute timeout between Type B calls
+
+Location: useProfileSync.js constants
+
+AsyncStorage Strategy
+Latest Data Wins: Subsequent changes overwrite previous pending changes
+
+Automatic Retry: Failed syncs remain in storage for retry
+
+Manual Trigger: Save button initiates timing checks
+
+Storage Keys: last_profile_sync, pending_profile_changes
+
+File Structure
+text
+src/
+├── navigation/           # App navigation structure
+├── screens/
+│   ├── auth/            # Authentication flow
+│   ├── shared/          # Shared components
+│   │   └── profile/     # Profile management
+│   ├── employer/        # Employer-specific screens
+│   └── worker/          # Worker-specific screens
+├── hooks/               # Custom React hooks
+├── utils/               # Utilities & services
+└── styles/              # Theming system
+✅ Current Progress (Working Features)
+1. Authentication Flow ✅
+Welcome screen with role selection (Worker/Employer)
+
+Terms & Conditions acceptance
+
+Email/password signup with validation
+
+Automatic profile creation in Supabase
+
+2. Database Schema ✅
+Profiles Table:
+
+sql
+id (UUID, primary key)
+email (TEXT, required)
+role (TEXT: 'worker'/'employer', required)  
+is_profile_complete (BOOLEAN, default false)
+full_name (TEXT)
+bio (TEXT, 250 char limit)
+location_city (TEXT)
+location_suburb (TEXT)
+created_at (TIMESTAMP)
+updated_at (TIMESTAMP)
+Storage Bucket: profile-pictures ✅
+
+3. Navigation Structure ✅
+text
+Welcome → Role Selection → Terms → SignUp → CompleteProfile
+4. Theme System ✅
+Comprehensive color palette (light/dark themes)
+
+Consistent sizing system
+
+Modular component styling
+
+🔄 API Call Tracking System
+Location: src/utils/supabaseService.js
+Function: Tracks all Supabase calls with counters
+Monitoring: Console logs with call numbers and types
+
+Key Functions:
+
+authService.signUp() - Type A
+
+authService.createProfile() - Type A
+
+authService.updateProfile() - Type A (initial) / Type B (updates)
+
+🎯 Next Priority Features
+Immediate (Next Session):
+Complete Profile Screen
+
+Profile picture upload
+
+Location detection ("Use my location")
+
+Bio/information fields
+
+Save with Type A/B logic
+
+Short Term:
+Role-based Navigation
+
+Worker dashboard (job browsing)
+
+Employer dashboard (job posting)
+
+Job Management
+
+Post jobs (Employers)
+
+Browse/apply jobs (Workers)
+
+Long Term:
+Chat System (post-hire communication)
+
+Schedule Conflict Prevention
+
+AdMob Integration
+
+🔧 Technical Implementation Notes
+Key Custom Hooks:
+useSupabase() - API call management
+
+useProfileSync() - Smart profile synchronization
+
+Environment Setup:
+Supabase URL: https://wwuqejbsotizqdcwqfpu.supabase.co
+
+Environment variables via transform-inline-environment-variables
+
+Git branches: main (stable), profile-screen (current development)
+
+Performance Considerations:
+Debounced API calls to minimize Supabase usage
+
+Local storage caching for offline capability
+
+Modular component structure for maintainability
+
+🚀 Why This Architecture Works
+Scalable: Modular structure allows easy feature addition
+
+Cost-effective: Smart API call strategy minimizes Supabase costs
+
+User-friendly: Smooth onboarding with progressive profiling
+
+Maintainable: Clear separation of concerns
+
+Reliable: Robust error handling and data persistence
+
+📋 Immediate Next Steps
+Complete ProfileScreen with all fields
+
+Implement profile picture upload to Supabase Storage
+
+Add location detection with reverse geocoding
+
+Test complete user onboarding flow
+
+Implement role-based navigation
+
+Last Updated: Current development on profile-screen branch
+Current Focus: Profile completion system with smart sync logic

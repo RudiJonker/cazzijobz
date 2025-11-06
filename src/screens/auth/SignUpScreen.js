@@ -9,12 +9,12 @@ import {
   ScrollView 
 } from 'react-native';
 import { lightTheme } from '../../styles/theme';
-import { useSupabase } from '../../hooks/useSupabase'; 
 import { authService } from '../../utils/supabaseService';
+import { storageService } from '../../utils/storageService';
 
 export default function SignUpScreen({ navigation, route }) {
-  const { role } = route.params; // 'worker' or 'employer' from previous screen
-  const { loading, typeACall } = useSupabase();
+  const { role } = route.params;
+  const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     email: '',
@@ -23,33 +23,37 @@ export default function SignUpScreen({ navigation, route }) {
   });
 
   const handleSignUp = async () => {
-    // Basic validation
-    if (!formData.email || !formData.password || !formData.confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+  // Basic validation
+  if (!formData.email || !formData.password || !formData.confirmPassword) {
+    Alert.alert('Error', 'Please fill in all fields');
+    return;
+  }
 
-    if (formData.password !== formData.confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
+  if (formData.password !== formData.confirmPassword) {
+    Alert.alert('Error', 'Passwords do not match');
+    return;
+  }
 
-    if (formData.password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
+  if (formData.password.length < 6) {
+    Alert.alert('Error', 'Password must be at least 6 characters');
+    return;
+  }
 
-     try {
-    // TYPE A API Call - User registration
+  setLoading(true);
+  try {
+    console.log('🔍 Calling authService.signUp...');
     const { data: authData, error: authError } = await authService.signUp(
       formData.email, 
       formData.password
     );
 
+    console.log('🔍 Auth response:', { authData, authError });
+
     if (authError) throw authError;
 
     if (authData.user) {
-      // TYPE A API Call - Create profile
+      console.log('🔍 User created, creating profile...');
+      // Create profile
       const { error: profileError } = await authService.createProfile({
         id: authData.user.id,
         email: formData.email,
@@ -58,30 +62,44 @@ export default function SignUpScreen({ navigation, route }) {
         created_at: new Date().toISOString(),
       });
 
+      console.log('🔍 Profile creation response:', { profileError });
+
       if (profileError) throw profileError;
 
-      // Success - navigate to Profile Completion screen
-      Alert.alert(
-        'Success', 
-        'Account created! Please complete your profile.',
-        [{ text: 'OK', onPress: () => navigation.navigate('CompleteProfile', { 
-          userId: authData.user.id,
-          email: formData.email,
-          role: role 
-        })}]
-      );
+      // STORE LOCALLY
+      console.log('🔍 Storing data locally...');
+      await storageService.setUserProfile({
+        id: authData.user.id,
+        email: formData.email,
+        role: role,
+        is_profile_complete: false
+      });
+      await storageService.setAdminStatus(false);
+
+      console.log('🔍 Navigating to CompleteProfile...');
+      // Navigate to profile completion
+      navigation.navigate('CompleteProfile', { 
+        userId: authData.user.id,
+        email: formData.email,
+        role: role 
+      });
     }
   } catch (error) {
-      console.error('Sign up error:', error);
-      
-      // Handle specific Supabase errors
-      if (error.message.includes('already registered')) {
-        Alert.alert('Error', 'This email is already registered. Please log in instead.');
-      } else {
-        Alert.alert('Error', 'Failed to create account. Please try again.');
-      }
+    console.error('❌ Sign up error:', error);
+    
+    // Handle specific Supabase errors
+    if (error.message.includes('already registered')) {
+      Alert.alert('Error', 'This email is already registered. Please log in instead.');
+    } else if (error.message.includes('profiles')) {
+      Alert.alert('Error', 'Failed to create user profile. Please try again.');
+    } else {
+      Alert.alert('Error', 'Failed to create account. Please try again.');
     }
-  };
+  } finally {
+    console.log('🔍 Setting loading to false');
+    setLoading(false);
+  }
+};
 
   const updateFormData = (field, value) => {
     setFormData(prev => ({
@@ -95,7 +113,10 @@ export default function SignUpScreen({ navigation, route }) {
       style={[styles.container, { backgroundColor: lightTheme.colors.background }]}
       contentContainerStyle={styles.scrollContent}
     >
-      <Text style={[styles.title, { color: lightTheme.colors.text }]}>
+      {/* Added top spacing */}
+      <View style={styles.topSpacer} />
+      
+      <Text style={[styles.title, { color: lightTheme.colors.primary }]}>
         Create Your Account
       </Text>
       
@@ -130,7 +151,7 @@ export default function SignUpScreen({ navigation, route }) {
             borderColor: lightTheme.colors.border,
             color: lightTheme.colors.text 
           }]}
-          placeholder="Create a password (min. 6 characters)"
+          placeholder="Minimum 6 characters"
           placeholderTextColor={lightTheme.colors.placeholder}
           value={formData.password}
           onChangeText={(text) => updateFormData('password', text)}
@@ -146,7 +167,7 @@ export default function SignUpScreen({ navigation, route }) {
             borderColor: lightTheme.colors.border,
             color: lightTheme.colors.text 
           }]}
-          placeholder="Confirm your password"
+          placeholder="Confirm password"
           placeholderTextColor={lightTheme.colors.placeholder}
           value={formData.confirmPassword}
           onChangeText={(text) => updateFormData('confirmPassword', text)}
@@ -190,6 +211,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
   },
+  topSpacer: {
+    height: 20, // Added space at top
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -206,7 +230,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   label: {
-    fontSize: 16,
+    fontSize: 14, // Reduced font size
     marginBottom: 8,
     fontWeight: '600',
   },
@@ -215,7 +239,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 20,
-    fontSize: 16,
+    fontSize: 14, // Reduced font size
   },
   signUpButton: {
     padding: 15,
@@ -232,7 +256,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loginText: {
-    fontSize: 16,
+    fontSize: 14, // Reduced font size
     fontWeight: '600',
   },
 });

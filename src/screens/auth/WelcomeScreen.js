@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { lightTheme } from '../../styles/theme';
+import { lightTheme } from '../../styles/theme'; // Fixed import path
 
 export default function WelcomeScreen({ navigation }) {
   return (
@@ -28,10 +28,7 @@ export default function WelcomeScreen({ navigation }) {
       
       <View style={styles.roleContainer}>
         <TouchableOpacity 
-          style={[styles.roleCard, { 
-            backgroundColor: lightTheme.colors.card,
-            borderColor: lightTheme.colors.cardBorder 
-          }]}
+          style={[styles.roleCard, { backgroundColor: lightTheme.colors.card }]}
           onPress={() => navigation.navigate('Terms', { role: 'worker' })}
         >
           <Text style={styles.roleIcon}>👷</Text>
@@ -39,15 +36,12 @@ export default function WelcomeScreen({ navigation }) {
             Worker
           </Text>
           <Text style={[styles.roleDescription, { color: lightTheme.colors.text }]}>
-            Find casual jobs
+            Find jobs
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={[styles.roleCard, { 
-            backgroundColor: lightTheme.colors.card,
-            borderColor: lightTheme.colors.cardBorder 
-          }]}
+          style={[styles.roleCard, { backgroundColor: lightTheme.colors.card }]}
           onPress={() => navigation.navigate('Terms', { role: 'employer' })}
         >
           <Text style={styles.roleIcon}>💼</Text>
@@ -56,6 +50,20 @@ export default function WelcomeScreen({ navigation }) {
           </Text>
           <Text style={[styles.roleDescription, { color: lightTheme.colors.text }]}>
             Post jobs
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* LOGIN OPTION ADDED HERE */}
+      <View style={styles.loginContainer}>
+        <Text style={[styles.loginText, { color: lightTheme.colors.text }]}>
+          Already have an account?
+        </Text>
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Login')}
+        >
+          <Text style={[styles.loginLink, { color: lightTheme.colors.primary }]}>
+            Log In
           </Text>
         </TouchableOpacity>
       </View>
@@ -80,20 +88,20 @@ const styles = StyleSheet.create({
     height: 120,
   },
   title: {
-    fontSize: 24, // Will use SIZES.xLarge later
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14, // Will use SIZES.small later
+    fontSize: 14,
     marginBottom: 30,
     textAlign: 'center',
     fontStyle: 'italic',
   },
   chooseText: {
-    fontSize: 14, // Your requested change
-    marginBottom: 40, // Your requested change
+    fontSize: 16,
+    marginBottom: 20,
     fontWeight: '600',
   },
   roleContainer: {
@@ -105,25 +113,39 @@ const styles = StyleSheet.create({
   roleCard: {
     flex: 1,
     padding: 15,
-    borderRadius: 10, // Will use SIZES.radius later
+    borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
+    borderColor: '#ddd',
     minHeight: 120,
     justifyContent: 'center',
   },
   roleIcon: {
-    fontSize: 24, // Will use SIZES.icon later
+    fontSize: 24,
     marginBottom: 8,
   },
   roleTitle: {
-    fontSize: 14, // Will use SIZES.small later
+    fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 4,
     textAlign: 'center',
   },
   roleDescription: {
-    fontSize: 11, // Will use SIZES.xSmall later
+    fontSize: 11,
     textAlign: 'center',
     lineHeight: 14,
+  },
+  loginContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 30,
+  },
+  loginText: {
+    fontSize: 14,
+    marginRight: 5,
+  },
+  loginLink: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
