@@ -28,79 +28,65 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
-    // ✅ Debug: Check what's in formData
-    console.log('🔍 Login attempt with:', formData);
+  if (!formData.email || !formData.password) {
+    Alert.alert('Error', 'Please fill in all fields');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const { data, error } = await authService.signIn(formData.email, formData.password);
     
-    if (!formData.email || !formData.password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+    if (error) throw error;
 
-    setLoading(true);
-    try {
-      const { data, error } = await authService.signIn(formData.email, formData.password);
+    if (data.user) {
+      // ✅ Check for pending changes FIRST
+      const pendingChanges = await storageService.getPendingChanges();
+      const existingProfile = await storageService.getUserProfile();
       
-      if (error) throw error;
+      console.log('🔍 Login check:', {
+        hasExistingProfile: !!existingProfile,
+        hasPendingChanges: !!pendingChanges,
+        existingUserId: existingProfile?.id,
+        newUserId: data.user.id
+      });
 
-      if (data.user) {
-        // Check for pending changes FIRST (even if no user profile exists)
-        const pendingChanges = await storageService.getPendingChanges();
-        const existingProfile = await storageService.getUserProfile();
+      let profileToUse;
+
+      // ✅ If we have pending changes, merge them
+      if (pendingChanges && existingProfile?.id === data.user.id) {
+        console.log('🔄 Found pending changes during login');
         
-        console.log('🔍 Login check:', {
-          hasExistingProfile: !!existingProfile,
-          hasPendingChanges: !!pendingChanges,
-          existingUserId: existingProfile?.id,
-          newUserId: data.user.id
-        });
+        const { data: profile, error: profileError } = await authService.getProfile(data.user.id);
+        if (profileError) throw profileError;
 
-        // If we have pending changes, we need to handle them carefully
-        if (pendingChanges) {
-          console.log('🔄 Found pending changes during login');
-          
-          // Get fresh profile from Supabase
-          const { data: profile, error: profileError } = await authService.getProfile(data.user.id);
-          
-          if (profileError) throw profileError;
-
-          if (profile) {
-            // Merge pending changes with fresh Supabase data
-            const profileWithPendingChanges = { ...profile, ...pendingChanges };
-            
-            await storageService.setUserProfile(profileWithPendingChanges);
-            await storageService.setAdminStatus(profileWithPendingChanges.is_admin || false);
-            
-            console.log('✅ Merged pending changes with Supabase data');
-          }
-        } else {
-          // No pending changes - normal flow
-          const { data: profile, error: profileError } = await authService.getProfile(data.user.id);
-          
-          if (profileError) throw profileError;
-
-          if (profile) {
-            await storageService.setUserProfile(profile);
-            await storageService.setAdminStatus(profile.is_admin || false);
-          }
-        }
-
-        // Navigate to main app
-        navigation.navigate('Main');
-      }
-    } catch (error) {
-      console.error('❌ Login error:', error);
-      
-      if (error.message.includes('Invalid login credentials')) {
-        Alert.alert('Error', 'Invalid email or password.');
-      } else if (error.message.includes('Email not confirmed')) {
-        Alert.alert('Error', 'Please confirm your email address before logging in.');
+        profileToUse = { ...profile, ...pendingChanges };
+        console.log('✅ Merged pending changes with Supabase data');
       } else {
-        Alert.alert('Error', 'Failed to log in. Please try again.');
+        // ✅ Normal flow - just get fresh profile
+        const { data: profile, error: profileError } = await authService.getProfile(data.user.id);
+        if (profileError) throw profileError;
+        profileToUse = profile;
       }
-    } finally {
-      setLoading(false);
+
+      if (profileToUse) {
+        // ✅ CRITICAL: Save profile and admin status
+        await storageService.setUserProfile(profileToUse);
+        await storageService.setAdminStatus(profileToUse.is_admin || false); // ✅ THIS LINE IS KEY
+        
+        console.log('✅ User data stored locally, admin status:', profileToUse.is_admin);
+      }
+
+      // Navigate to main app
+      navigation.navigate('Main');
     }
-  };
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    // ... error handling
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <ScrollView 

@@ -169,10 +169,11 @@ export default function ProfileScreen() {
 
     // Prepare changes for profile
     const changes = {
-      full_name: formData.full_name,
-      bio: formData.bio,
-      location_city: formData.location_city,
-    };
+  full_name: formData.full_name,
+  bio: formData.bio,
+  location_city: formData.location_city,
+  profile_picture_url: finalImageUrl, // ✅ ADD THIS BACK
+};
 
     // Save to local storage
     const updatedProfile = { 
