@@ -6,7 +6,6 @@ CAZZIJOBS/
 │   ├── logo.png
 │   └── splash-icon.png
 ├── docs/
-│   ├── projectNotes.txt
 │   └── projectSummary.txt
 ├── src/
 │   ├── components/
@@ -28,6 +27,11 @@ CAZZIJOBS/
 │   │   │   ├── TermsScreen.js
 │   │   │   └── WelcomeScreen.js
 │   │   ├── employer/
+│   │   ├── jobs/
+│   │   │   └── post/
+│   │   │       ├── components/
+│   │   │       ├── hooks/
+│   │   │       └── PostJobScreen.js
 │   │   ├── shared/
 │   │   │   ├── profile/
 │   │   │   │   ├── components/
@@ -40,6 +44,7 @@ CAZZIJOBS/
 │   ├── styles/
 │   │   └── theme.js
 │   └── utils/
+│       ├── debounce.js
 │       ├── storageService.js
 │       ├── supabaseClient.js
 │       └── supabaseService.js
@@ -52,4 +57,5 @@ CAZZIJOBS/
 ├── index.js
 ├── package-lock.json
 ├── package.json
-└── project-tree.md
+├── project-tree.md
+└── ScreenLayouts.png

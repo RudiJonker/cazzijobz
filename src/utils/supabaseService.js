@@ -191,6 +191,57 @@ export const adminService = {
   }
 };
 
+// Add to src/utils/supabaseService.js
+export const jobService = {
+  generateJobReference: async () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const nums = '0123456789';
+    
+    let reference = '';
+    // First 2 letters
+    for (let i = 0; i < 2; i++) {
+      reference += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    // Then 5 numbers
+    for (let i = 0; i < 5; i++) {
+      reference += nums.charAt(Math.floor(Math.random() * nums.length));
+    }
+    
+    return reference;
+  },
+
+  createJob: async (jobData, userId = null) => {
+    await trackApiCall('TYPE_A', 'CREATE_JOB', userId);
+    
+    try {
+      // Generate human-readable reference
+      const jobReference = await jobService.generateJobReference();
+      
+      const jobPayload = {
+        ...jobData,
+        job_reference: jobReference,
+        // Remove title if it exists
+        title: undefined
+      };
+      
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert([jobPayload])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      console.log('✅ Job created with reference:', jobReference);
+      return { data, error: null };
+      
+    } catch (error) {
+      console.error('❌ Job creation error:', error);
+      return { data: null, error };
+    }
+  }
+};
+
 // ✅ NEW: Helper function to decode base64 to Uint8Array
 const decodeBase64 = (base64) => {
   try {
