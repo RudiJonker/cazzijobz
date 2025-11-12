@@ -1,3 +1,4 @@
+// src/utils/storageService.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const storageService = {
@@ -95,5 +96,86 @@ export const storageService = {
       'pending_profile_changes',
       'last_api_call'
     ]);
+  },
+
+  // ✅ NEW: Jobs storage functions
+  setMyJobs: async (jobs) => {
+    try {
+      await AsyncStorage.setItem('my_jobs', JSON.stringify(jobs));
+      console.log('💾 Jobs saved to local storage:', jobs.length);
+    } catch (error) {
+      console.error('Error saving jobs to storage:', error);
+    }
+  },
+
+  getMyJobs: async () => {
+    try {
+      const jobs = await AsyncStorage.getItem('my_jobs');
+      const parsedJobs = jobs ? JSON.parse(jobs) : [];
+      console.log('💾 Jobs loaded from local storage:', parsedJobs.length);
+      return parsedJobs;
+    } catch (error) {
+      console.error('Error getting jobs from storage:', error);
+      return [];
+    }
+  },
+
+  addJobToStorage: async (newJob) => {
+    try {
+      const existingJobs = await storageService.getMyJobs();
+      const updatedJobs = [newJob, ...existingJobs];
+      await storageService.setMyJobs(updatedJobs);
+      console.log('💾 Job added to local storage:', newJob.job_reference);
+      return updatedJobs;
+    } catch (error) {
+      console.error('Error adding job to storage:', error);
+      return [];
+    }
+  },
+
+  updateJobInStorage: async (jobId, updates) => {
+    try {
+      const existingJobs = await storageService.getMyJobs();
+      const updatedJobs = existingJobs.map(job => 
+        job.id === jobId ? { ...job, ...updates } : job
+      );
+      await storageService.setMyJobs(updatedJobs);
+      console.log('💾 Job updated in local storage:', jobId);
+      return updatedJobs;
+    } catch (error) {
+      console.error('Error updating job in storage:', error);
+      return existingJobs;
+    }
+  },
+
+  deleteJobFromStorage: async (jobId) => {
+    try {
+      const existingJobs = await storageService.getMyJobs();
+      const updatedJobs = existingJobs.filter(job => job.id !== jobId);
+      await storageService.setMyJobs(updatedJobs);
+      console.log('💾 Job deleted from local storage:', jobId);
+      return updatedJobs;
+    } catch (error) {
+      console.error('Error deleting job from storage:', error);
+      return existingJobs;
+    }
+  },
+
+  // ✅ NEW: Clear only jobs data (for testing or cleanup)
+  clearJobsData: async () => {
+    try {
+      await AsyncStorage.removeItem('my_jobs');
+      console.log('💾 Jobs data cleared from storage');
+    } catch (error) {
+      console.error('Error clearing jobs data:', error);
+    }
   }
 };
+
+// ✅ NEW: Export individual functions for easier imports
+export const setMyJobs = storageService.setMyJobs;
+export const getMyJobs = storageService.getMyJobs;
+export const addJobToStorage = storageService.addJobToStorage;
+export const updateJobInStorage = storageService.updateJobInStorage;
+export const deleteJobFromStorage = storageService.deleteJobFromStorage;
+export const clearJobsData = storageService.clearJobsData;

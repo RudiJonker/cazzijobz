@@ -1,11 +1,12 @@
-// navigation/MainNavigator.js - Updated
+// navigation/MainNavigator.js - Updated with MyJobs
 import React, { useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
 import HomeScreen from '../screens/shared/HomeScreen';
 import ProfileScreen from '../screens/shared/profile/ProfileScreen';
 import AdminScreen from '../screens/shared/AdminScreen';
-import PostJobScreen from '../screens/jobs/post/PostJobScreen'; // Add this import
+import PostJobScreen from '../screens/jobs/post/PostJobScreen';
+import MyJobsScreen from '../screens/employer/MyJobsScreen'; // Add this import
 import { authService } from '../utils/supabaseService';
 import { storageService } from '../utils/storageService';
 
@@ -71,6 +72,8 @@ export default function MainNavigator() {
             emoji = '⚙️';
           } else if (route.name === 'Post Job') {
             emoji = '📝';
+          } else if (route.name === 'My Jobs') {
+            emoji = '📋';
           }
           return <Text style={{ fontSize: 20 }}>{emoji}</Text>;
         },
@@ -81,6 +84,7 @@ export default function MainNavigator() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Post Job" component={PostJobScreen} />
+      <Tab.Screen name="My Jobs" component={MyJobsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
       
       {isAdmin && (

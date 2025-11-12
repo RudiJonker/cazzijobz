@@ -1,5 +1,5 @@
-// src/screens/jobs/post/PostJobScreen.js
-import React, { useState, useContext } from 'react';
+// src/screens/jobs/post/PostJobScreen.js - COMPLETE FIXED VERSION
+import React, { useState } from 'react';
 import { 
   View, 
   ScrollView, 
@@ -9,6 +9,7 @@ import {
   Alert,
   Modal 
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native'; // ✅ ADD THIS IMPORT
 import { Button } from '../../../components/common/Button';
 import { COLORS, SIZES } from '../../../styles/theme';
 import JobCategoryField from './components/JobCategoryField';
@@ -16,10 +17,10 @@ import JobLocationField from './components/JobLocationField';
 import JobDateTimeField from './components/JobDateTimeField';
 import JobBudgetField from './components/JobBudgetField';
 import { supabase } from '../../../utils/supabaseClient';
-import { useSupabase } from '../../../hooks/useSupabase'; // Use existing hook
+import { storageService } from '../../../utils/storageService'; // ✅ ADD THIS IMPORT
 
 export default function PostJobScreen() {
-  const { user } = useSupabase(); // Get user from useSupabase hook
+  const navigation = useNavigation(); // ✅ ADD THIS HOOK
   const [formData, setFormData] = useState({
     category: '',
     description: '',
@@ -93,86 +94,91 @@ export default function PostJobScreen() {
     }
   };
 
-  // ✅ REAL SUPABASE INTEGRATION - NO MORE SIMULATION
+  // ✅ FIXED: handleFinalSubmit with navigation and local storage
   const handleFinalSubmit = async () => {
-  if (isSubmitting) return;
-  
-  setIsSubmitting(true);
-  
-  try {
-    // Get current user directly from Supabase auth
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (isSubmitting) return;
     
-    if (userError || !user) {
-      console.error('❌ User auth error:', userError);
-      Alert.alert('Error', 'You must be logged in to post jobs');
-      return;
+    setIsSubmitting(true);
+    
+    try {
+      // Get current user directly from Supabase auth
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('❌ User auth error:', userError);
+        Alert.alert('Error', 'You must be logged in to post jobs');
+        return;
+      }
+
+      console.log('👤 User ID:', user.id);
+
+      const jobData = {
+        employer_id: user.id,
+        description: formData.description,
+        category: formData.category,
+        location_city: formData.location_city,
+        location_suburb: formData.location_suburb,
+        address_text: `${formData.location_suburb}, ${formData.location_city}`,
+        scheduled_date: formData.scheduled_date,
+        time_from: formData.start_time,
+        time_to: formData.end_time,
+        duration_hours: parseFloat(formData.duration_hours) || 0,
+        budget: parseFloat(formData.budget) || 0,
+        budget_currency: 'ZAR',
+        status: 'open',
+        applicant_count: 0,
+      };
+
+      console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
+
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert([jobData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        throw error;
+      }
+
+      console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
+      
+      // ✅ NEW: Save job to local storage immediately
+      await storageService.addJobToStorage(data);
+      console.log('💾 Job saved to local storage');
+
+      // Reset form
+      setFormData({
+        category: '',
+        description: '',
+        location_city: '',
+        location_suburb: '',
+        scheduled_date: '',
+        start_time: '',
+        end_time: '',
+        duration_hours: '',
+        budget: '',
+      });
+      
+      setShowConfirmation(false);
+      
+      // ✅ FIXED: Navigate to My Jobs screen
+      navigation.navigate('My Jobs', { 
+        refresh: true,
+        newJobReference: data.job_reference 
+      });
+      
+    } catch (error) {
+      console.error('💥 REAL ERROR:', error);
+      Alert.alert(
+        'Posting Failed', 
+        error.message || 'Could not post your job. Please check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    console.log('👤 User ID:', user.id);
-
-    const jobData = {
-      employer_id: user.id,
-      description: formData.description,
-      category: formData.category,
-      location_city: formData.location_city,
-      location_suburb: formData.location_suburb,
-      address_text: `${formData.location_suburb}, ${formData.location_city}`,
-      scheduled_date: formData.scheduled_date,
-      time_from: formData.start_time,
-      time_to: formData.end_time,
-      duration_hours: parseFloat(formData.duration_hours) || 0,
-      budget: parseFloat(formData.budget) || 0,
-      budget_currency: 'ZAR',
-      status: 'open',
-      applicant_count: 0,
-    };
-
-    console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
-
-    const { data, error } = await supabase
-      .from('jobs')
-      .insert([jobData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ Supabase error:', error);
-      throw error;
-    }
-
-    console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
-    
-    // Reset form
-    setFormData({
-      category: '',
-      description: '',
-      location_city: '',
-      location_suburb: '',
-      scheduled_date: '',
-      start_time: '',
-      end_time: '',
-      duration_hours: '',
-      budget: '',
-    });
-    
-    setShowConfirmation(false);
-    
-    Alert.alert(
-      'Success!', 
-      `Job posted successfully!${data.job_reference ? `\nReference: ${data.job_reference}` : ''}`
-    );
-    
-  } catch (error) {
-    console.error('💥 REAL ERROR:', error);
-    Alert.alert(
-      'Posting Failed', 
-      error.message || 'Could not post your job. Please check your connection and try again.'
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>

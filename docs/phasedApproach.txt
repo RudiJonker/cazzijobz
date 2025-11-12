@@ -1,0 +1,242 @@
+🎯 Job Status Flow & Architecture
+Job Status Progression:
+text
+EMPLOYER FLOW:
+open → [applications received] → hired/declined → active → completed/cancelled
+
+WORKER FLOW:  
+search → applied → hired/declined → accepted/rejected → active → completed
+Detailed Status Definitions:
+javascript
+// Job Status (employer perspective)
+JOB_STATUS = {
+  open: "Open for applications",
+  hired: "Worker hired - pending confirmation", 
+  active: "Job in progress",
+  completed: "Job completed",
+  cancelled: "Job cancelled",
+  expired: "Job expired (no hires)"
+}
+
+// Application Status (worker perspective)  
+APPLICATION_STATUS = {
+  applied: "Application submitted",
+  hired: "Employer offered job",
+  declined: "Employer declined",
+  accepted: "Worker accepted job",
+  rejected: "Worker rejected offer",
+  withdrawn: "Worker withdrew application"
+}
+🗃️ Database Schema Additions Needed
+Applications Table:
+sql
+CREATE TABLE applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+  worker_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'applied' CHECK (status IN ('applied', 'hired', 'declined', 'accepted', 'rejected', 'withdrawn')),
+  applied_at TIMESTAMP DEFAULT NOW(),
+  employer_notes TEXT,
+  worker_notes TEXT,
+  UNIQUE(job_id, worker_id) -- Prevent duplicate applications
+);
+Worker Schedule Table (for conflict prevention):
+sql
+CREATE TABLE worker_schedule (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+  scheduled_date DATE NOT NULL,
+  time_from TIME NOT NULL,
+  time_to TIME NOT NULL,
+  status TEXT CHECK (status IN ('confirmed', 'completed', 'cancelled'))
+);
+🎨 Job Card Layout Structure
+javascript
+// Job Card Component Structure
+<JobCard>
+  ┌─────────────────────────────────────┐
+  │ YV91363        [binoculars] [edit]  │ ← Reference + Actions
+  │ Gardening                           │ ← Category
+  │ Saturday, 12 March                  │ ← Formatted Date  
+  │                                     │
+  │ [View Applicants]      [● open]     │ ← Button + Status badge
+  └─────────────────────────────────────┘
+🔄 Navigation Flow
+text
+Employer:
+PostJobScreen → (on success) → MyJobsScreen → JobDetailScreen → ApplicantListScreen → ApplicantDetailScreen
+
+Worker:
+HomeScreen (browse) → JobDetailScreen → Apply → MyApplicationsScreen
+⚠️ Schedule Conflict Prevention
+Worker-Side Validation:
+javascript
+// Before applying, check if worker has schedule conflicts
+const hasScheduleConflict = (workerId, jobDate, startTime, endTime) => {
+  // Check worker_schedule table for overlapping confirmed jobs
+  // Also check applications with 'hired' status
+}
+Employer-Side Validation:
+javascript
+// Before hiring, check applicant's schedule
+const canHireApplicant = (workerId, jobId) => {
+  // Get worker's confirmed schedule from worker_schedule
+  // Check if new job overlaps with existing commitments
+  // Also consider travel time buffer
+}
+🚀 Implementation Priority
+Phase 1 (Immediate):
+
+MyJobsScreen with job cards
+
+JobDetailScreen (view/edit pre-hire)
+
+Basic applications table
+
+Phase 2:
+
+Applicant management
+
+Schedule conflict detection
+
+Notifications system
+
+Phase 3:
+
+Worker job browsing/application
+
+Advanced conflict prevention
+
+Rating system
+
+💡 Key Technical Considerations
+Local Storage: Cache worker schedules for offline conflict checking
+
+Real-time Updates: Use Supabase subscriptions for application status changes
+
+Type A/B Strategy: Extend to job updates and applications
+
+Offline Queue: Handle applications when worker is offline
+
+Ready to start with Phase 1 - building the MyJobsScreen? This will give employers immediate value by letting them manage their posted jobs! 🚀
+
+ScreenLayouts.png
+PNG 50.86KB
+Nice.
+Instead of  rejected: "Worker rejected offer", we could rather say 'Unavailable'. Rejected is such a soul crushing word :).
+
+Before I forget, the schedule conflict prevention should have at least a 30 minute grace period between jobs to allow for travel time between job sites to ensure workers don't arrive late. (I see you already incorporated that in your notes above).
+
+Just for reference, I made a very simple screen layout to help me visualize things better, see attached. This is not carved in stone and will most probably change as we progress. It's just so you know what I'm kinda thinking.
+
+Something else to consider if possible - can we introduce an audio notification for updates? So, when the user is not using the app at the moment, the phone makes a sound when new applicaitons or jobs are received? Not for immedtiate attention, but when we get there.
+Excellent! The screen layouts are very helpful for visualization, and I love your thoughtful approach to the UX.
+
+🎯 Updated Terminology & Enhancements
+Application Status (More Human-Friendly):
+javascript
+APPLICATION_STATUS = {
+  applied: "Application submitted",
+  hired: "Employer offered job", 
+  declined: "Employer declined",
+  accepted: "Worker accepted job",
+  unavailable: "Worker unavailable", // ← Much better than "rejected"!
+  withdrawn: "Worker withdrew application"
+}
+Enhanced Schedule Conflict Prevention:
+javascript
+const hasScheduleConflict = (workerId, jobDate, startTime, endTime) => {
+  // Add 30-minute travel buffer before and after
+  const bufferMinutes = 30;
+  const bufferMs = bufferMinutes * 60 * 1000;
+  
+  const jobStart = new Date(`${jobDate} ${startTime}`);
+  const jobEnd = new Date(`${jobDate} ${endTime}`);
+  
+  const bufferedStart = new Date(jobStart.getTime() - bufferMs);
+  const bufferedEnd = new Date(jobEnd.getTime() + bufferMs);
+  
+  // Check for overlaps with buffered times
+  return checkForOverlaps(workerId, bufferedStart, bufferedEnd);
+}
+🔊 Audio Notifications - Absolutely Possible!
+We can implement push notifications with sound using:
+
+Options for Audio Notifications:
+Expo Notifications + Local Sounds (easiest)
+
+Custom Sound Files for different event types
+
+Vibration patterns + sound combinations
+
+Implementation Approach:
+javascript
+// Audio notification service
+import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
+
+const playNotificationSound = async (type) => {
+  try {
+    const soundObject = new Audio.Sound();
+    
+    // Different sounds for different events
+    const sounds = {
+      application: require('../../assets/sounds/new-application.mp3'),
+      job_offer: require('../../assets/sounds/job-offer.mp3'),
+      reminder: require('../../assets/sounds/reminder.mp3')
+    };
+    
+    await soundObject.loadAsync(sounds[type] || sounds.application);
+    await soundObject.playAsync();
+    
+  } catch (error) {
+    console.log('Audio notification error:', error);
+  }
+};
+
+// Trigger for new applications
+const notifyNewApplication = (jobReference, applicantName) => {
+  playNotificationSound('application');
+  
+  Notifications.scheduleNotificationAsync({
+    content: {
+      title: "New Applicant!",
+      body: `${applicantName} applied for job ${jobReference}`,
+      sound: true, // System sound
+      data: { jobId, applicantId }
+    },
+    trigger: null // Immediate
+  });
+};
+🎨 Screen Layout Feedback
+Your layouts look great! A few observations:
+
+Employer Flow: Perfect logical progression
+
+Rating System: 1-5 stars with "Finalise Job" - nice!
+
+Worker Flow: Clear search → apply → manage flow
+
+Status Visibility: Good use of color coding and clear actions
+
+🚀 Implementation Priority (Adjusted)
+Phase 1 - Core Employer Management:
+
+✅ Job posting (DONE!)
+
+MyJobsScreen - Job cards with reference, category, date, status
+
+JobDetailScreen - View/edit pre-hire + binoculars icon
+
+ApplicantListScreen - Basic applicant cards
+
+Phase 2 - Hiring Flow:
+5. ApplicantDetailScreen - Full details + Hire/Decline
+6. Schedule conflict detection (30-min buffer)
+7. Basic notifications (sound optional initially)
+
+Phase 3 - Worker Experience:
+8. Worker job browsing/application
+9. MyApplications screen
+10. Audio notifications
