@@ -1,177 +1,196 @@
-// src/utils/storageService.js - ADD JOBS REFRESH TRACKING
+// utils/storageService.js - COMPLETE UPDATED VERSION
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const storageService = {
-  // User data
+const storageService = {
+  // ==================== USER & AUTHENTICATION ====================
+  
+  // User Profile
   setUserProfile: async (profile) => {
-    await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
-  },
-  
-  getUserProfile: async () => {
-    const profile = await AsyncStorage.getItem('userProfile');
-    return profile ? JSON.parse(profile) : null;
-  },
-  
-  setAdminStatus: async (isAdmin) => {
-    await AsyncStorage.setItem('isAdmin', isAdmin.toString());
-  },
-  
-  getAdminStatus: async () => {
-    const isAdmin = await AsyncStorage.getItem('isAdmin');
-    return isAdmin === 'true';
-  },
-  
-  // Auth state
-  setAuthToken: async (token) => {
-    await AsyncStorage.setItem('authToken', token);
-  },
-  
-  getAuthToken: async () => {
-    return await AsyncStorage.getItem('authToken');
-  },
-  
-  // Type B sync management
-  setPendingChanges: async (changes) => {
-    await AsyncStorage.setItem('pending_profile_changes', JSON.stringify(changes));
-  },
-  
-  getPendingChanges: async () => {
-    const changes = await AsyncStorage.getItem('pending_profile_changes');
-    return changes ? JSON.parse(changes) : null;
-  },
-  
-  clearPendingChanges: async () => {
-    await AsyncStorage.removeItem('pending_profile_changes');
-  },
-  
-  // API call tracking for timeout
-  setLastApiCall: async (timestamp) => {
-    await AsyncStorage.setItem('last_api_call', timestamp);
-  },
-  
-  getLastApiCall: async () => {
-    return await AsyncStorage.getItem('last_api_call');
-  },
-  
-  // Profile sync tracking (if needed for future features)
-  setLastSync: async (timestamp) => {
-    await AsyncStorage.setItem('last_profile_sync', timestamp);
-  },
-  
-  getLastSync: async () => {
-    return await AsyncStorage.getItem('last_profile_sync');
-  },
-  
-  // Clear all user data (for sign out) - ORIGINAL
-  clearUserData: async () => {
-    await AsyncStorage.multiRemove([
-      'userProfile',
-      'isAdmin', 
-      'authToken',
-      'last_profile_sync',
-      'pending_profile_changes',
-      'last_api_call'
-    ]);
-  },
-  
-  // ✅ NEW: Clear user data but preserve pending changes
-  clearUserDataButKeepPendingChanges: async () => {
-    await AsyncStorage.multiRemove([
-      'userProfile',
-      'isAdmin', 
-      'authToken',
-      'last_profile_sync',
-      'last_api_call'
-      // 'pending_profile_changes' is NOT removed - preserves unsynced data
-    ]);
-  },
-  
-  // ✅ NEW: Clear everything including pending changes (for complete reset)
-  clearAllData: async () => {
-    await AsyncStorage.multiRemove([
-      'userProfile',
-      'isAdmin', 
-      'authToken',
-      'last_profile_sync',
-      'pending_profile_changes',
-      'last_api_call'
-    ]);
+    try {
+      await AsyncStorage.setItem('user_profile', JSON.stringify(profile));
+      console.log('💾 User profile saved to local storage');
+    } catch (error) {
+      console.error('Error saving user profile:', error);
+    }
   },
 
-  // ✅ NEW: Jobs storage functions
+  getUserProfile: async () => {
+    try {
+      const profile = await AsyncStorage.getItem('user_profile');
+      return profile ? JSON.parse(profile) : null;
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      return null;
+    }
+  },
+
+  clearUserProfile: async () => {
+    try {
+      await AsyncStorage.removeItem('user_profile');
+      console.log('🧹 User profile cleared from local storage');
+    } catch (error) {
+      console.error('Error clearing user profile:', error);
+    }
+  },
+
+  // Admin Status
+  setAdminStatus: async (isAdmin) => {
+    try {
+      await AsyncStorage.setItem('is_admin', JSON.stringify(isAdmin));
+      console.log('💾 Admin status saved:', isAdmin);
+    } catch (error) {
+      console.error('Error saving admin status:', error);
+    }
+  },
+
+  getAdminStatus: async () => {
+    try {
+      const isAdmin = await AsyncStorage.getItem('is_admin');
+      return isAdmin !== null ? JSON.parse(isAdmin) : null;
+    } catch (error) {
+      console.error('Error loading admin status:', error);
+      return null;
+    }
+  },
+
+  // Pending Changes (for smart login merge)
+  setPendingChanges: async (changes) => {
+    try {
+      await AsyncStorage.setItem('pending_changes', JSON.stringify(changes));
+      console.log('💾 Pending changes saved:', Object.keys(changes).length, 'fields');
+    } catch (error) {
+      console.error('Error saving pending changes:', error);
+    }
+  },
+
+  getPendingChanges: async () => {
+    try {
+      const changes = await AsyncStorage.getItem('pending_changes');
+      return changes ? JSON.parse(changes) : null;
+    } catch (error) {
+      console.error('Error loading pending changes:', error);
+      return null;
+    }
+  },
+
+  clearPendingChanges: async () => {
+    try {
+      await AsyncStorage.removeItem('pending_changes');
+      console.log('🧹 Pending changes cleared');
+    } catch (error) {
+      console.error('Error clearing pending changes:', error);
+    }
+  },
+
+  // Last API Call Tracking (for debugging)
+  setLastApiCall: async (apiCall) => {
+    try {
+      await AsyncStorage.setItem('last_api_call', JSON.stringify(apiCall));
+    } catch (error) {
+      console.error('Error saving last API call:', error);
+    }
+  },
+
+  getLastApiCall: async () => {
+    try {
+      const apiCall = await AsyncStorage.getItem('last_api_call');
+      return apiCall ? JSON.parse(apiCall) : null;
+    } catch (error) {
+      console.error('Error loading last API call:', error);
+      return null;
+    }
+  },
+
+   clearUserDataButKeepPendingChanges: async () => {
+    try {
+      // First, save the pending changes temporarily
+      const pendingChanges = await storageService.getPendingChanges();
+      
+      // Clear all user data
+      const keysToRemove = [
+        'user_profile',
+        'is_admin',
+        'my_jobs',
+        'available_jobs',
+        'last_jobs_refresh',
+        'last_api_call'
+      ];
+      
+      await AsyncStorage.multiRemove(keysToRemove);
+      console.log('🧹 User data cleared (keeping pending changes)');
+      
+      // Restore pending changes if they existed
+      if (pendingChanges) {
+        await storageService.setPendingChanges(pendingChanges);
+        console.log('💾 Pending changes restored after logout');
+      }
+      
+    } catch (error) {
+      console.error('Error clearing user data (keep pending):', error);
+    }
+  },
+
+  // ==================== EMPLOYER JOBS ====================
+  
+  // Employer Jobs (My Jobs)
   setMyJobs: async (jobs) => {
     try {
       await AsyncStorage.setItem('my_jobs', JSON.stringify(jobs));
       console.log('💾 Jobs saved to local storage:', jobs.length);
     } catch (error) {
-      console.error('Error saving jobs to storage:', error);
+      console.error('Error saving jobs:', error);
     }
   },
 
   getMyJobs: async () => {
     try {
       const jobs = await AsyncStorage.getItem('my_jobs');
-      const parsedJobs = jobs ? JSON.parse(jobs) : [];
-      console.log('💾 Jobs loaded from local storage:', parsedJobs.length);
-      return parsedJobs;
+      return jobs ? JSON.parse(jobs) : [];
     } catch (error) {
-      console.error('Error getting jobs from storage:', error);
+      console.error('Error loading jobs:', error);
       return [];
     }
   },
 
-  addJobToStorage: async (newJob) => {
+  // Update single job in local storage
+  updateJobInStorage: async (updatedJob) => {
     try {
-      const existingJobs = await storageService.getMyJobs();
-      const updatedJobs = [newJob, ...existingJobs];
-      await storageService.setMyJobs(updatedJobs);
-      console.log('💾 Job added to local storage:', newJob.job_reference);
-      return updatedJobs;
-    } catch (error) {
-      console.error('Error adding job to storage:', error);
-      return [];
-    }
-  },
-
-  updateJobInStorage: async (jobId, updates) => {
-    try {
-      const existingJobs = await storageService.getMyJobs();
-      const updatedJobs = existingJobs.map(job => 
-        job.id === jobId ? { ...job, ...updates } : job
+      const jobs = await storageService.getMyJobs();
+      const updatedJobs = jobs.map(job => 
+        job.id === updatedJob.id ? updatedJob : job
       );
       await storageService.setMyJobs(updatedJobs);
-      console.log('💾 Job updated in local storage:', jobId);
-      return updatedJobs;
+      console.log('💾 Job updated in local storage:', updatedJob.id);
     } catch (error) {
       console.error('Error updating job in storage:', error);
-      return existingJobs;
     }
   },
 
-  deleteJobFromStorage: async (jobId) => {
+  // ==================== WORKER JOBS ====================
+  
+  // Available Jobs (for Workers)
+  setAvailableJobs: async (jobs) => {
     try {
-      const existingJobs = await storageService.getMyJobs();
-      const updatedJobs = existingJobs.filter(job => job.id !== jobId);
-      await storageService.setMyJobs(updatedJobs);
-      console.log('💾 Job deleted from local storage:', jobId);
-      return updatedJobs;
+      await AsyncStorage.setItem('available_jobs', JSON.stringify(jobs));
+      console.log('💾 Available jobs saved to local storage:', jobs.length);
     } catch (error) {
-      console.error('Error deleting job from storage:', error);
-      return existingJobs;
+      console.error('Error saving available jobs:', error);
     }
   },
 
-  // ✅ NEW: Clear only jobs data (for testing or cleanup)
-  clearJobsData: async () => {
+  getAvailableJobs: async () => {
     try {
-      await AsyncStorage.removeItem('my_jobs');
-      console.log('💾 Jobs data cleared from storage');
+      const jobs = await AsyncStorage.getItem('available_jobs');
+      return jobs ? JSON.parse(jobs) : null;
     } catch (error) {
-      console.error('Error clearing jobs data:', error);
+      console.error('Error loading available jobs:', error);
+      return null;
     }
   },
 
-  // ✅ NEW: Jobs refresh time tracking (PERSISTS ACROSS LOGOUT/LOGIN)
+  // ==================== REFRESH TIMEOUT MANAGEMENT ====================
+  
+  // Last Jobs Refresh (shared between employer and worker)
   setLastJobsRefresh: async (timestamp) => {
     try {
       await AsyncStorage.setItem('last_jobs_refresh', timestamp);
@@ -183,33 +202,111 @@ export const storageService = {
 
   getLastJobsRefresh: async () => {
     try {
-      const timestamp = await AsyncStorage.getItem('last_jobs_refresh');
-      console.log('⏱️ Jobs refresh time loaded:', timestamp);
-      return timestamp;
+      return await AsyncStorage.getItem('last_jobs_refresh');
     } catch (error) {
-      console.error('Error getting jobs refresh time:', error);
+      console.error('Error loading jobs refresh time:', error);
       return null;
     }
   },
 
-  // ✅ NEW: Clear jobs refresh time (optional)
-  clearLastJobsRefresh: async () => {
+  // ==================== APP STATE & SETTINGS ====================
+  
+  // App First Launch
+  setAppFirstLaunch: async () => {
     try {
-      await AsyncStorage.removeItem('last_jobs_refresh');
-      console.log('⏱️ Jobs refresh time cleared');
+      await AsyncStorage.setItem('app_first_launch', 'false');
     } catch (error) {
-      console.error('Error clearing jobs refresh time:', error);
+      console.error('Error setting app first launch:', error);
+    }
+  },
+
+  getAppFirstLaunch: async () => {
+    try {
+      const firstLaunch = await AsyncStorage.getItem('app_first_launch');
+      return firstLaunch === null; // Returns true if first launch
+    } catch (error) {
+      console.error('Error getting app first launch:', error);
+      return true;
+    }
+  },
+
+  // User Preferences
+  setUserPreferences: async (preferences) => {
+    try {
+      await AsyncStorage.setItem('user_preferences', JSON.stringify(preferences));
+    } catch (error) {
+      console.error('Error saving user preferences:', error);
+    }
+  },
+
+  getUserPreferences: async () => {
+    try {
+      const preferences = await AsyncStorage.getItem('user_preferences');
+      return preferences ? JSON.parse(preferences) : {};
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+      return {};
+    }
+  },
+
+  // ==================== BULK OPERATIONS ====================
+  
+  // Clear all app data (logout)
+  clearAllAppData: async () => {
+    try {
+      const keysToKeep = ['app_first_launch', 'user_preferences'];
+      const allKeys = await AsyncStorage.getAllKeys();
+      const keysToRemove = allKeys.filter(key => !keysToKeep.includes(key));
+      
+      if (keysToRemove.length > 0) {
+        await AsyncStorage.multiRemove(keysToRemove);
+        console.log('🧹 All app data cleared except settings');
+      }
+    } catch (error) {
+      console.error('Error clearing app data:', error);
+    }
+  },
+
+  // Clear only sensitive user data
+  clearUserData: async () => {
+    try {
+      const keysToRemove = [
+        'user_profile',
+        'is_admin',
+        'pending_changes',
+        'my_jobs',
+        'available_jobs',
+        'last_jobs_refresh'
+      ];
+      
+      await AsyncStorage.multiRemove(keysToRemove);
+      console.log('🧹 User data cleared from local storage');
+    } catch (error) {
+      console.error('Error clearing user data:', error);
+    }
+  },
+
+  // Debug: Get all storage contents
+  getAllStorage: async () => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      const result = await AsyncStorage.multiGet(keys);
+      
+      const storageContents = {};
+      result.forEach(([key, value]) => {
+        try {
+          storageContents[key] = value ? JSON.parse(value) : value;
+        } catch {
+          storageContents[key] = value;
+        }
+      });
+      
+      return storageContents;
+    } catch (error) {
+      console.error('Error getting all storage:', error);
+      return {};
     }
   }
 };
 
-// ✅ NEW: Export individual functions for easier imports
-export const setMyJobs = storageService.setMyJobs;
-export const getMyJobs = storageService.getMyJobs;
-export const addJobToStorage = storageService.addJobToStorage;
-export const updateJobInStorage = storageService.updateJobInStorage;
-export const deleteJobFromStorage = storageService.deleteJobFromStorage;
-export const clearJobsData = storageService.clearJobsData;
-export const setLastJobsRefresh = storageService.setLastJobsRefresh;
-export const getLastJobsRefresh = storageService.getLastJobsRefresh;
-export const clearLastJobsRefresh = storageService.clearLastJobsRefresh;
+export { storageService };
