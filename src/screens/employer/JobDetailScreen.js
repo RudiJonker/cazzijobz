@@ -1,3 +1,4 @@
+// src/screens/employer/JobDetailScreen.js - FIXED API CALLS
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -18,6 +19,7 @@ export default function JobDetailScreen() {
   const { jobId } = route.params;
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
 
   useEffect(() => {
     fetchJobDetails();
@@ -25,38 +27,62 @@ export default function JobDetailScreen() {
 
   const fetchJobDetails = async () => {
     try {
-      // First try local storage
+      // STEP 1: Always try local storage first (immediate)
       const localJobs = await storageService.getMyJobs();
       const localJob = localJobs.find(j => j.id === jobId);
       
       if (localJob) {
+        console.log('💾 Loading job from local storage');
         setJob(localJob);
         setLoading(false);
+        
+        // Check if data might be stale (optional - can be removed)
+        const now = new Date();
+        const lastRefresh = await storageService.getLastJobsRefresh();
+        if (lastRefresh) {
+          const timeSinceLastRefresh = (now - new Date(lastRefresh)) / 1000 / 60; // minutes
+          if (timeSinceLastRefresh > 5) {
+            setNeedsRefresh(true);
+            console.log('📱 Job data may be stale');
+          }
+        }
       }
 
-      // Then sync with Supabase (Type A call)
-      console.log('📥 TYPE A CALL - Fetching job details from Supabase');
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
+      // STEP 2: Only make API call if we don't have local data OR data is stale
+      if (!localJob || needsRefresh) {
+        console.log('📥 TYPE A CALL - Fetching job details from Supabase');
+        const { data, error } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (data) {
-        setJob(data);
-        // Update local storage
-        const updatedJobs = localJobs.map(j => j.id === jobId ? data : j);
-        await storageService.setMyJobs(updatedJobs);
+        if (data) {
+          setJob(data);
+          // Update local storage
+          const updatedJobs = localJobs.map(j => j.id === jobId ? data : j);
+          await storageService.setMyJobs(updatedJobs);
+          setNeedsRefresh(false);
+        }
       }
 
     } catch (error) {
       console.error('❌ Error fetching job details:', error);
-      Alert.alert('Error', 'Failed to load job details');
+      // Don't show alert if we have local data
+      if (!job) {
+        Alert.alert('Error', 'Failed to load job details');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Manual refresh function (if needed)
+  const handleManualRefresh = async () => {
+    setLoading(true);
+    await fetchJobDetails();
   };
 
   const handleEdit = () => {
@@ -117,29 +143,47 @@ export default function JobDetailScreen() {
           onPress={() => navigation.goBack()}
           style={{ marginTop: SIZES.margin }}
         />
+        {needsRefresh && (
+          <Button
+            title="Try Again"
+            onPress={handleManualRefresh}
+            style={{ marginTop: SIZES.margin }}
+          />
+        )}
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header with job reference and edit button */}
+      {/* Clean Header - Just "Job Details" */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.jobReference}>{job.job_reference}</Text>
-          <Text style={[styles.statusText, { color: getStatusColor(job.status) }]}>
-            {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-          </Text>
-        </View>
-        {job.status === 'open' && (
-          <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-            <Text style={styles.editIcon}>✏️</Text>
+        <Text style={styles.headerTitle}>Job Details</Text>
+        {needsRefresh && (
+          <TouchableOpacity onPress={handleManualRefresh}>
+            <Text style={styles.refreshText}>🔄 Refresh</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Job Details Card */}
       <View style={styles.detailCard}>
+        {/* Job Reference, Status & Edit Button */}
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.jobReference}>{job.job_reference}</Text>
+            <Text style={[styles.statusText, { color: getStatusColor(job.status) }]}>
+              {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+            </Text>
+          </View>
+          {job.status === 'open' && (
+            <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+              <Text style={styles.editIcon}>✏️</Text>
+              <Text style={styles.editText}>Edit</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Text style={styles.category}>{job.category}</Text>
         
         <View style={styles.detailRow}>
@@ -174,7 +218,12 @@ export default function JobDetailScreen() {
           <Text style={styles.detailValue}>R {job.budget}</Text>
         </View>
 
-        {/* REMOVED: View Applicants button from here */}
+        {/* View Applicants Button */}
+        <Button
+          title={`View Applicants (${job.applicant_count || 0})`}
+          onPress={handleViewApplicants}
+          style={styles.applicantsButton}
+        />
       </View>
     </ScrollView>
   );
@@ -198,35 +247,27 @@ const styles = {
     flex: 1,
     backgroundColor: COLORS.white,
   },
+  // Clean Header - Just "Job Details"
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     padding: SIZES.padding,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
   },
-  headerLeft: {
-    flex: 1,
-  },
-  jobReference: {
+  headerTitle: {
     fontSize: SIZES.xLarge,
     fontWeight: 'bold',
-    color: COLORS.white,
-    marginBottom: 4,
+    color: COLORS.primary,
   },
-  statusText: {
+  refreshText: {
     fontSize: SIZES.small,
-    fontWeight: '600',
-    fontStyle: 'italic',
+    color: COLORS.primary,
+    fontWeight: '500',
   },
-  editButton: {
-    padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: SIZES.radius,
-  },
-  editIcon: {
-    fontSize: SIZES.medium,
-  },
+  // Job Details Card
   detailCard: {
     margin: SIZES.margin,
     padding: SIZES.padding,
@@ -239,6 +280,48 @@ const styles = {
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  // Card Header with job reference, status and edit button
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  jobReference: {
+    fontSize: SIZES.large,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: SIZES.small,
+    fontWeight: '600',
+    fontStyle: 'italic',
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: SIZES.radius,
+    marginLeft: 8,
+  },
+  editIcon: {
+    fontSize: SIZES.medium,
+    marginRight: 6,
+  },
+  editText: {
+    fontSize: SIZES.small,
+    color: COLORS.white,
+    fontWeight: '500',
   },
   category: {
     fontSize: SIZES.large,
@@ -261,6 +344,10 @@ const styles = {
     fontSize: SIZES.small,
     color: COLORS.gray800,
     flex: 1,
+  },
+  applicantsButton: {
+    marginTop: SIZES.margin,
+    backgroundColor: COLORS.primary,
   },
   loadingText: {
     textAlign: 'center',

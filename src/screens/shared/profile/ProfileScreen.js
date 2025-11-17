@@ -448,6 +448,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center',
+    marginTop: 15,
   },
   completionContainer: {
     backgroundColor: lightTheme.colors.card,

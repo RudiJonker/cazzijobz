@@ -1,4 +1,4 @@
-// src/screens/employer/MyJobsScreen.js - FIXED TIMEOUT PERSISTENCE
+// src/screens/employer/MyJobsScreen.js - UPDATED WITH CLEAN HEADER
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -252,7 +252,7 @@ export default function MyJobsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header with stale indicator */}
+      {/* Clean Header - White background, blue text */}
       <View style={styles.header}>
         <Text style={styles.title}>My Jobs</Text>
         <Text style={styles.subtitle}>
@@ -340,21 +340,25 @@ const styles = {
     flex: 1,
     backgroundColor: COLORS.white,
   },
+  // Clean Header - White background, blue text
   header: {
     padding: SIZES.padding,
     paddingBottom: SIZES.padding / 2,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
   },
   title: {
     fontSize: SIZES.xLarge,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: COLORS.primary,
     marginBottom: 4,
+    textAlign: 'center',
+    marginTop: 15,
   },
   subtitle: {
     fontSize: SIZES.small,
-    color: COLORS.white,
-    opacity: 0.8,
+    color: COLORS.gray600,
   },
   scrollView: {
     flex: 1,

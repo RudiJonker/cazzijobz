@@ -1,4 +1,4 @@
-// src/screens/worker/WorkerJobsScreen.js - WITH COOLDOWN
+// src/screens/worker/WorkerJobsScreen.js - COMPLETE FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -23,7 +23,7 @@ export default function WorkerJobsScreen({ navigation }) {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [dataStale, setDataStale] = useState(false);
 
-  // Check if API call is allowed (spam prevention) - SAME AS EMPLOYER
+  // Check if API call is allowed (spam prevention)
   const isRefreshAllowed = async () => {
     const storedRefreshTime = await storageService.getLastJobsRefresh();
     
@@ -66,7 +66,7 @@ export default function WorkerJobsScreen({ navigation }) {
     loadUserProfile();
   }, []);
 
-  // Fetch available jobs for worker - UPDATED WITH COOLDOWN
+  // Fetch available jobs for worker
   const fetchAvailableJobs = async (forceRefresh = false) => {
     console.log('🔄 Worker fetchAvailableJobs called, forceRefresh:', forceRefresh);
     
@@ -273,7 +273,7 @@ export default function WorkerJobsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header with stale indicator */}
+      {/* Clean Header - White background, blue text */}
       <View style={styles.header}>
         <Text style={styles.title}>Available Jobs</Text>
         <Text style={styles.subtitle}>
@@ -283,11 +283,6 @@ export default function WorkerJobsScreen({ navigation }) {
            lastRefreshTime ? ` • Updated ${new Date(lastRefreshTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
            'Pull to refresh'}
         </Text>
-      </View>
-
-      {/* AdMob Placeholder */}
-      <View style={styles.adBanner}>
-        <Text style={styles.adText}>AdMob Banner Placeholder</Text>
       </View>
 
       {/* Jobs List */}
@@ -370,39 +365,30 @@ export default function WorkerJobsScreen({ navigation }) {
 }
 
 const styles = {
-  // ... (keep all the same styles)
   container: {
     flex: 1,
     backgroundColor: COLORS.white,
   },
+  // Clean Header - White background, blue text
   header: {
     padding: SIZES.padding,
     paddingBottom: SIZES.padding / 2,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+    marginTop: 10,
   },
   title: {
     fontSize: SIZES.xLarge,
+    textAlign: 'center',
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: COLORS.primary,
     marginBottom: 4,
+    marginTop: 15,
   },
   subtitle: {
     fontSize: SIZES.small,
-    color: COLORS.white,
-    opacity: 0.8,
-  },
-  adBanner: {
-    backgroundColor: COLORS.gray200,
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray300,
-  },
-  adText: {
     color: COLORS.gray600,
-    fontSize: SIZES.small,
-    fontWeight: '500',
   },
   scrollView: {
     flex: 1,

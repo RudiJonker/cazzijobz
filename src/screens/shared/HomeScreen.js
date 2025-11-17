@@ -1,4 +1,4 @@
-// src/screens/shared/HomeScreen.js - DASHBOARD VERSION
+// src/screens/shared/HomeScreen.js - UPDATED WITH CLEAN HEADER
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { storageService } from '../../utils/storageService';
@@ -87,10 +87,10 @@ export default function HomeScreen({ navigation }) {
         />
       }
     >
-      {/* Welcome Header */}
+      {/* Clean Header - White background, blue text */}
       <View style={styles.header}>
         <Text style={styles.welcomeText}>
-          Welcome back, {userProfile.full_name || 'User'}! 👋
+          Dashboard
         </Text>
         <Text style={styles.roleText}>
           {userProfile.role === 'worker' ? 'Worker' : 'Employer'} Dashboard
@@ -215,20 +215,25 @@ const styles = {
     flex: 1,
     backgroundColor: lightTheme.colors.background,
   },
+  // Clean Header - White background, blue text
   header: {
     padding: SIZES.padding,
-    backgroundColor: COLORS.primary,
+    paddingBottom: SIZES.padding / 2,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
   },
   welcomeText: {
     fontSize: SIZES.xLarge,
     fontWeight: 'bold',
-    color: COLORS.white,
+    textAlign: 'center',
+    color: COLORS.primary,
     marginBottom: 4,
+    marginTop: 15,
   },
   roleText: {
     fontSize: SIZES.small,
-    color: COLORS.white,
-    opacity: 0.8,
+    color: COLORS.gray600,
   },
   statsSection: {
     padding: SIZES.padding,
