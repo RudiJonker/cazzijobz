@@ -1,116 +1,66 @@
-// src/screens/jobs/post/components/JobLocationField.js
+// src/screens/jobs/post/components/JobLocationField.js - VERTICAL LAYOUT
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput,
-  TouchableOpacity, 
-  Alert, 
-  ActivityIndicator 
-} from 'react-native';
-import { COLORS, SIZES } from '../../../../styles/theme';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import * as Location from 'expo-location';
+import { COLORS, SIZES } from '../../../../styles/theme';
+import { Button } from '../../../../components/common/Button';
 
-export default function JobLocationField({ city, suburb, onChange, errors }) {
-  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+export default function JobLocationField({ city, suburb, onChange, showSuccessPopup = false }) {
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   const getCurrentLocation = async () => {
+    setLoadingLocation(true);
+    
     try {
-      setIsLoadingLocation(true);
-      
-      // Request location permissions
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission Required',
-          'Please enable location permissions to use your current location. You can enable it in your device settings.',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Permission Denied', 'Location permission is required to use this feature.');
         return;
       }
 
-      // Get current position
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
+      let location = await Location.getCurrentPositionAsync({});
       console.log('📍 GPS Coordinates:', location.coords);
-
-      // Reverse geocode to get address
-      const [address] = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      console.log('📍 Reverse Geocode Result:', address);
-
-      if (address) {
-        // Auto-fill city and suburb
-        const detectedCity = address.city || address.region || 'Unknown City';
-        const detectedSuburb = address.district || address.subregion || address.city || 'Unknown Area';
+      
+      const reverseGeocode = await Location.reverseGeocodeAsync(location.coords);
+      console.log('📍 Reverse Geocode Result:', reverseGeocode[0]);
+      
+      if (reverseGeocode[0]) {
+        const { city: locationCity, district, subregion } = reverseGeocode[0];
         
-        onChange('location_city', detectedCity);
-        onChange('location_suburb', detectedSuburb);
+        onChange('location_city', locationCity || subregion || '');
+        onChange('location_suburb', district || '');
         
-        Alert.alert(
-          'Location Detected',
-          `We've set your location to: ${detectedSuburb}, ${detectedCity}`,
-          [{ text: 'Great!' }]
-        );
-      } else {
-        Alert.alert(
-          'Location Error',
-          'Could not determine your address from GPS coordinates. Please enter your location manually.',
-          [{ text: 'OK' }]
-        );
+        // Only show popup if explicitly enabled
+        if (showSuccessPopup) {
+          Alert.alert('Success', 'Great! We\'ve set your location based on your current position.');
+        }
       }
     } catch (error) {
-      console.error('📍 Location error:', error);
-      Alert.alert(
-        'Location Error',
-        'Failed to get your current location. Please check your GPS and try again, or enter your location manually.',
-        [{ text: 'OK' }]
-      );
+      console.error('Location error:', error);
+      Alert.alert('Error', 'Could not get your location. Please try again or enter manually.');
     } finally {
-      setIsLoadingLocation(false);
+      setLoadingLocation(false);
     }
   };
 
   return (
     <View style={{ marginBottom: SIZES.margin }}>
-      <Text style={styles.fieldLabel}>Where is the job? *</Text>
-
-      {/* Location Detection Button */}
-      <View style={{ marginBottom: SIZES.margin }}>
-        <TouchableOpacity 
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={styles.fieldLabel}>Location</Text>
+        <Button
+          title={loadingLocation ? "Getting Location..." : "Use My Location"}
           onPress={getCurrentLocation}
-          disabled={isLoadingLocation}
-          style={[
-            styles.locationButton,
-            isLoadingLocation && styles.locationButtonDisabled
-          ]}
-        >
-          {isLoadingLocation ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          ) : (
-            <Ionicons name="location" size={20} color={COLORS.primary} />
-          )}
-          <Text style={styles.locationButtonText}>
-            {isLoadingLocation ? 'Detecting Location...' : 'Use My Current Location'}
-          </Text>
-        </TouchableOpacity>
-        
-        <Text style={styles.locationHelpText}>
-          Tap to automatically insert your location
-        </Text>
+          style={styles.locationButton}
+          textStyle={styles.locationButtonText}
+          loading={loadingLocation}
+        />
       </View>
 
-      {/* City Input */}
-      <View style={{ marginBottom: SIZES.margin }}>
-        <Text style={styles.subLabel}>City *</Text>
-        <View style={styles.inputContainer}>
-          <Ionicons name="business" size={20} color={COLORS.gray500} style={styles.inputIcon} />
+      {/* VERTICAL LAYOUT - City above Suburb */}
+      <View style={styles.verticalLayout}>
+        {/* City Field - Full Width */}
+        <View style={styles.fullWidthField}>
+          <Text style={styles.subLabel}>City</Text>
           <TextInput
             style={styles.input}
             value={city}
@@ -119,33 +69,18 @@ export default function JobLocationField({ city, suburb, onChange, errors }) {
             placeholderTextColor={COLORS.gray500}
           />
         </View>
-        {errors.location_city ? (
-          <Text style={styles.errorText}>{errors.location_city}</Text>
-        ) : null}
-        <Text style={styles.charCount}>
-          {city?.length || 0}/50
-        </Text>
-      </View>
 
-      {/* Suburb Input */}
-      <View>
-        <Text style={styles.subLabel}>Suburb/Area *</Text>
-        <View style={styles.inputContainer}>
-          <Ionicons name="location" size={20} color={COLORS.gray500} style={styles.inputIcon} />
+        {/* Suburb Field - Full Width */}
+        <View style={styles.fullWidthField}>
+          <Text style={styles.subLabel}>Suburb</Text>
           <TextInput
             style={styles.input}
             value={suburb}
             onChangeText={(value) => onChange('location_suburb', value)}
-            placeholder="e.g., Sandton, Rondebosch, Umhlanga"
+            placeholder="e.g., Sandton, Sea Point, Umhlanga"
             placeholderTextColor={COLORS.gray500}
           />
         </View>
-        {errors.location_suburb ? (
-          <Text style={styles.errorText}>{errors.location_suburb}</Text>
-        ) : null}
-        <Text style={styles.charCount}>
-          {suburb?.length || 0}/50
-        </Text>
       </View>
     </View>
   );
@@ -156,65 +91,39 @@ const styles = {
     fontSize: SIZES.small,
     fontWeight: '600',
     color: COLORS.gray700,
-    marginBottom: 12,
-  },
-  locationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primary + '10',
-    padding: SIZES.padding,
-    borderRadius: SIZES.radius,
-    borderWidth: 1,
-    borderColor: COLORS.primary + '30',
-    marginBottom: 8,
-  },
-  locationButtonDisabled: {
-    opacity: 0.6,
-  },
-  locationButtonText: {
-    color: COLORS.primary,
-    fontSize: SIZES.small,
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  locationHelpText: {
-    color: COLORS.gray500,
-    fontSize: SIZES.small,
-    fontStyle: 'italic',
-    textAlign: 'center',
   },
   subLabel: {
-    fontSize: SIZES.small,
+    fontSize: SIZES.xSmall,
     fontWeight: '500',
-    color: COLORS.gray700,
-    marginBottom: 8,
+    color: COLORS.gray600,
+    marginBottom: 4,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  input: {
     borderWidth: 1,
     borderColor: COLORS.gray300,
     borderRadius: SIZES.radius,
-    backgroundColor: COLORS.white,
-  },
-  inputIcon: {
-    marginLeft: SIZES.padding,
-  },
-  input: {
-    flex: 1,
-    padding: SIZES.padding,
+    padding: 12,
     fontSize: SIZES.small,
+    backgroundColor: COLORS.white,
     color: COLORS.gray800,
   },
-  errorText: {
-    color: COLORS.error,
-    fontSize: SIZES.small,
-    marginTop: 4,
+  // VERTICAL LAYOUT STYLES
+  verticalLayout: {
+    flexDirection: 'column',
   },
-  charCount: {
-    color: COLORS.gray500,
-    fontSize: SIZES.small,
-    marginTop: 4,
-    textAlign: 'right',
+  fullWidthField: {
+    width: '100%',
+    marginBottom: 12, // Space between fields
   },
+  locationButton: {
+  backgroundColor: COLORS.primary, // Changed from COLORS.gray100
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: SIZES.radius,  
+},
+locationButtonText: {
+  fontSize: SIZES.xSmall,
+  color: COLORS.white, // Changed from COLORS.gray700
+  fontWeight: '500',
+},
 };

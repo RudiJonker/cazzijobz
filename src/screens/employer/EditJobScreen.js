@@ -1,26 +1,28 @@
-// src/screens/jobs/post/PostJobScreen.js - CLEANED UP VERSION
-import React, { useState } from 'react';
-import { 
-  View, 
-  ScrollView, 
-  Text, 
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  ScrollView,
+  Text,
   TextInput,
-  TouchableOpacity, 
+  TouchableOpacity,
   Alert,
-  Modal 
+  Modal
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Button } from '../../../components/common/Button';
-import { COLORS, SIZES } from '../../../styles/theme';
-import JobCategoryField from './components/JobCategoryField';
-import JobLocationField from './components/JobLocationField';
-import JobDateTimeField from './components/JobDateTimeField';
-import JobBudgetField from './components/JobBudgetField';
-import { supabase } from '../../../utils/supabaseClient';
-import { storageService } from '../../../utils/storageService';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { Button } from '../../components/common/Button';
+import { COLORS, SIZES } from '../../styles/theme';
+import JobCategoryField from '../jobs/post/components/JobCategoryField';
+import JobLocationField from '../jobs/post/components/JobLocationField';
+import JobDateTimeField from '../jobs/post/components/JobDateTimeField';
+import JobBudgetField from '../jobs/post/components/JobBudgetField';
+import { supabase } from '../../utils/supabaseClient';
+import { storageService } from '../../utils/storageService';
 
-export default function PostJobScreen() {
+export default function EditJobScreen() {
+  const route = useRoute();
   const navigation = useNavigation();
+  const { jobId } = route.params;
+  
   const [formData, setFormData] = useState({
     category: '',
     description: '',
@@ -35,6 +37,58 @@ export default function PostJobScreen() {
 
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Load job data for editing
+  useEffect(() => {
+    const loadJobData = async () => {
+      try {
+        // Try local storage first
+        const localJobs = await storageService.getMyJobs();
+        const jobToEdit = localJobs.find(job => job.id === jobId);
+        
+        if (jobToEdit) {
+          populateForm(jobToEdit);
+          setLoading(false);
+        }
+
+        // Then verify with Supabase
+        const { data, error } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          populateForm(data);
+        }
+
+      } catch (error) {
+        console.error('❌ Error loading job for editing:', error);
+        Alert.alert('Error', 'Failed to load job details for editing');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadJobData();
+  }, [jobId]);
+
+  const populateForm = (job) => {
+    setFormData({
+      category: job.category || '',
+      description: job.description || '',
+      location_city: job.location_city || '',
+      location_suburb: job.location_suburb || '',
+      scheduled_date: job.scheduled_date || '',
+      start_time: job.time_from || '',
+      end_time: job.time_to || '',
+      duration_hours: job.duration_hours?.toString() || '',
+      budget: job.budget?.toString() || '',
+    });
+  };
 
   // Basic field update function
   const updateField = (field, value) => {
@@ -94,27 +148,15 @@ export default function PostJobScreen() {
     }
   };
 
-  const handleFinalSubmit = async () => {
+  const handleUpdateJob = async () => {
     if (isSubmitting) return;
     
     setIsSubmitting(true);
     
     try {
-      // Get current user directly from Supabase auth
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        console.error('❌ User auth error:', userError);
-        Alert.alert('Error', 'You must be logged in to post jobs');
-        return;
-      }
-
-      console.log('👤 User ID:', user.id);
-
       const jobData = {
-        employer_id: user.id,
-        description: formData.description,
         category: formData.category,
+        description: formData.description,
         location_city: formData.location_city,
         location_suburb: formData.location_suburb,
         address_text: `${formData.location_suburb}, ${formData.location_city}`,
@@ -124,71 +166,65 @@ export default function PostJobScreen() {
         duration_hours: parseFloat(formData.duration_hours) || 0,
         budget: parseFloat(formData.budget) || 0,
         budget_currency: 'ZAR',
-        status: 'open',
-        applicant_count: 0,
+        updated_at: new Date().toISOString(),
       };
 
-      console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
+      console.log('📤 TYPE A CALL - Updating job in Supabase:', jobData);
 
+      // Update in Supabase
       const { data, error } = await supabase
         .from('jobs')
-        .insert([jobData])
+        .update(jobData)
+        .eq('id', jobId)
         .select()
         .single();
 
-      if (error) {
-        console.error('❌ Supabase error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
-      
-      // Save job to local storage immediately
-      await storageService.addJobToStorage(data);
-      console.log('💾 Job saved to local storage');
+      console.log('✅ Job updated successfully in Supabase:', data.id);
 
-      // Reset form
-      setFormData({
-        category: '',
-        description: '',
-        location_city: '',
-        location_suburb: '',
-        scheduled_date: '',
-        start_time: '',
-        end_time: '',
-        duration_hours: '',
-        budget: '',
-      });
-      
+      // Update local storage
+      const localJobs = await storageService.getMyJobs();
+      const updatedJobs = localJobs.map(job => 
+        job.id === jobId ? { ...job, ...jobData } : job
+      );
+      await storageService.setMyJobs(updatedJobs);
+      console.log('💾 Job updated in local storage');
+
+      // Success
       setShowConfirmation(false);
-      
-      // Navigate to My Jobs screen
-      navigation.navigate('My Jobs', { 
-        refresh: true,
-        newJobReference: data.job_reference 
-      });
+      Alert.alert('Success', 'Job updated successfully!');
+      navigation.goBack(); // Go back to JobDetailScreen
       
     } catch (error) {
-      console.error('💥 REAL ERROR:', error);
+      console.error('💥 Job update error:', error);
       Alert.alert(
-        'Posting Failed', 
-        error.message || 'Could not post your job. Please check your connection and try again.'
+        'Update Failed', 
+        error.message || 'Could not update your job. Please check your connection and try again.'
       );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading job for editing...</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>
       <View style={{ padding: SIZES.padding, paddingBottom: 80 }}>
-        {/* Compact Header */}
-        <Text style={styles.screenTitle}>Post a Job</Text>
+        {/* Header */}
+        <Text style={styles.screenTitle}>Edit Job</Text>
         <Text style={styles.requiredNote}>
-          All fields are required
+          Update the job details below
         </Text>
 
-        {/* Category Field */}
+        {/* Reuse all the field components from PostJobScreen */}
         <JobCategoryField
           value={formData.category}
           onChange={(value) => updateField('category', value)}
@@ -212,15 +248,13 @@ export default function PostJobScreen() {
           </Text>
         </View>
 
-        {/* Location Field - UPDATED: No popup on GPS success */}
         <JobLocationField
           city={formData.location_city}
           suburb={formData.location_suburb}
           onChange={updateField}
-          showSuccessPopup={false} // Disable the success popup
+          showSuccessPopup={false}
         />
 
-        {/* Date & Time Field */}
         <JobDateTimeField
           date={formData.scheduled_date}
           startTime={formData.start_time}
@@ -230,25 +264,24 @@ export default function PostJobScreen() {
           onTimeChange={updateTimeField}
         />
 
-        {/* Budget Field */}
         <JobBudgetField
           value={formData.budget}
           onChange={(value) => updateField('budget', value)}
         />
 
-        {/* Submit Button */}
+        {/* Update Button */}
         <Button
-          title="Preview & Post Job"
+          title="Preview & Update Job"
           onPress={handlePreview}
           style={{ marginTop: SIZES.margin }}
           loading={isSubmitting}
         />
 
-        {/* Simple Confirmation Modal */}
+        {/* Confirmation Modal */}
         <Modal visible={showConfirmation} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Confirm Job Details</Text>
+              <Text style={styles.modalTitle}>Confirm Job Updates</Text>
               
               <View style={styles.previewSection}>
                 <Text style={styles.previewText}>
@@ -279,13 +312,13 @@ export default function PostJobScreen() {
 
               <View style={styles.buttonRow}>
                 <Button
-                  title="Go Back"
+                  title="Cancel"
                   onPress={() => setShowConfirmation(false)}
                   style={[styles.button, { backgroundColor: COLORS.gray500 }]}
                 />
                 <Button
-                  title={isSubmitting ? "Posting..." : "Post Job"}
-                  onPress={handleFinalSubmit}
+                  title={isSubmitting ? "Updating..." : "Update Job"}
+                  onPress={handleUpdateJob}
                   style={styles.button}
                   loading={isSubmitting}
                 />
@@ -299,6 +332,12 @@ export default function PostJobScreen() {
 }
 
 const styles = {
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   screenTitle: {
     fontSize: SIZES.xLarge,
     fontWeight: 'bold',
@@ -380,5 +419,10 @@ const styles = {
   },
   button: {
     flex: 0.48,
+  },
+  loadingText: {
+    textAlign: 'center',
+    color: COLORS.gray500,
+    fontSize: SIZES.medium,
   },
 };

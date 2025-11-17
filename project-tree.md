@@ -1,4 +1,13 @@
 CAZZIJOBS/
+├── .idea/
+│   ├── caches/
+│   │   └── deviceStreaming.xml
+│   ├── .gitignore
+│   ├── cazzijobz.iml
+│   ├── misc.xml
+│   ├── modules.xml
+│   ├── vcs.xml
+│   └── workspace.xml
 ├── assets/
 │   ├── adaptive-icon.png
 │   ├── favicon.png
@@ -6,9 +15,12 @@ CAZZIJOBS/
 │   ├── logo.png
 │   └── splash-icon.png
 ├── docs/
+│   ├── phasedApproach.txt
 │   └── projectSummary.txt
 ├── src/
 │   ├── components/
+│   │   └── common/
+│   │       └── Button.js
 │   ├── config/
 │   │   └── supabase.js
 │   ├── contexts/
@@ -27,6 +39,8 @@ CAZZIJOBS/
 │   │   │   ├── TermsScreen.js
 │   │   │   └── WelcomeScreen.js
 │   │   ├── employer/
+│   │   │   ├── JobDetailScreen.js
+│   │   │   └── MyJobsScreen.js
 │   │   ├── jobs/
 │   │   │   └── post/
 │   │   │       ├── components/

@@ -1,126 +1,76 @@
-// src/screens/jobs/post/components/JobCategoryField.js
+// src/screens/jobs/post/components/JobCategoryField.js - SAFE VERSION
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  Modal, 
-  FlatList
-} from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { COLORS, SIZES } from '../../../../styles/theme';
-import { Ionicons } from '@expo/vector-icons';
+import { Button } from '../../../../components/common/Button';
 
-const CATEGORIES = [
-  { id: 'general', name: 'General Work', icon: 'build' },
-  { id: 'gardening', name: 'Gardening', icon: 'leaf' },
-  { id: 'washing', name: 'Washing', icon: 'water' },
-  { id: 'cleaning', name: 'Cleaning', icon: 'sparkles' },
-  { id: 'domestic', name: 'Domestic', icon: 'home' },
-  { id: 'painting', name: 'Painting', icon: 'brush' },
-  { id: 'cabling', name: 'Cabling', icon: 'flash' },
-  { id: 'construction', name: 'Construction', icon: 'hammer' },
-  { id: 'tiling', name: 'Tiling', icon: 'square' },
-  { id: 'heavy-lifting', name: 'Heavy Lifting', icon: 'barbell' },
-  { id: 'other', name: 'Other', icon: 'ellipsis-horizontal' },
+const JOB_CATEGORIES = [
+  'General Work', 'Gardening', 'Washing', 'Cleaning', 'Domestic',
+  'Painting', 'Cabling', 'Construction', 'Tiling', 'Heavy Lifting', 'Other'
 ];
 
-export default function JobCategoryField({ value, onChange, error }) {
-  const [modalVisible, setModalVisible] = useState(false);
+const CATEGORY_ICONS = {
+  'General Work': '🔧',
+  'Gardening': '🌿',
+  'Washing': '🧼',
+  'Cleaning': '✨',
+  'Domestic': '🏠',
+  'Painting': '🎨',
+  'Cabling': '🔌',
+  'Construction': '🏗️',
+  'Tiling': '🧱',
+  'Heavy Lifting': '💪',
+  'Other': '❓'
+};
 
-  const handleSelect = (category) => {
-    onChange(category.name);
-    setModalVisible(false);
+export default function JobCategoryField({ value, onChange }) {
+  const [showModal, setShowModal] = useState(false);
+  
+  // Safe default value
+  const safeValue = value || '';
+
+  const selectCategory = (category) => {
+    onChange(category);
+    setShowModal(false);
   };
-
-  const selectedCategory = CATEGORIES.find(cat => cat.name === value);
 
   return (
     <View style={{ marginBottom: SIZES.margin }}>
-      <Text style={styles.fieldLabel}>What type of work do you need? *</Text>
-      
-      {/* Category Display */}
-      <TouchableOpacity 
-        onPress={() => setModalVisible(true)}
-        style={styles.categoryButton}
-      >
-        {selectedCategory ? (
-          <View style={styles.selectedCategory}>
-            <Ionicons 
-              name={selectedCategory.icon} 
-              size={20} 
-              color={COLORS.primary} 
-            />
-            <Text style={styles.selectedCategoryText}>
-              {selectedCategory.name}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>
-              Select a category
-            </Text>
-          </View>
-        )}
-        <Ionicons name="chevron-down" size={20} color={COLORS.gray500} />
+      <Text style={styles.fieldLabel}>Job Category</Text>
+      <TouchableOpacity style={styles.pickerButton} onPress={() => setShowModal(true)}>
+        <Text style={styles.pickerText}>
+          {safeValue ? `${CATEGORY_ICONS[safeValue] || '📁'} ${safeValue}` : 'Select a category'}
+        </Text>
       </TouchableOpacity>
 
-      {error ? (
-        <Text style={styles.errorText}>{error}</Text>
-      ) : null}
-
-      {/* Category Modal - No Search Bar */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      <Modal visible={showModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Category</Text>
-              <TouchableOpacity 
-                onPress={() => setModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color={COLORS.gray500} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Categories List - No Search, Just the List */}
-            <FlatList
-              data={CATEGORIES}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Job Category</Text>
+            <ScrollView style={styles.categoriesList}>
+              {JOB_CATEGORIES.map((category) => (
                 <TouchableOpacity
+                  key={category}
                   style={[
                     styles.categoryItem,
-                    value === item.name && styles.selectedItem
+                    safeValue === category && styles.selectedCategory
                   ]}
-                  onPress={() => handleSelect(item)}
+                  onPress={() => selectCategory(category)}
                 >
-                  <View style={styles.categoryIcon}>
-                    <Ionicons 
-                      name={item.icon} 
-                      size={20} 
-                      color={value === item.name ? COLORS.primary : COLORS.gray600} 
-                    />
-                  </View>
+                  <Text style={styles.categoryIcon}>{CATEGORY_ICONS[category]}</Text>
                   <Text style={[
-                    styles.categoryName,
-                    value === item.name && styles.selectedCategoryName
+                    styles.categoryText,
+                    safeValue === category && styles.selectedCategoryText
                   ]}>
-                    {item.name}
+                    {category}
                   </Text>
-                  {value === item.name && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
                 </TouchableOpacity>
-              )}
-              style={styles.categoryList}
-              showsVerticalScrollIndicator={false}
+              ))}
+            </ScrollView>
+            <Button
+              title="Close"
+              onPress={() => setShowModal(false)}
+              style={styles.closeButton}
             />
           </View>
         </View>
@@ -136,38 +86,16 @@ const styles = {
     color: COLORS.gray700,
     marginBottom: 6,
   },
-  categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  pickerButton: {
     borderWidth: 1,
     borderColor: COLORS.gray300,
     borderRadius: SIZES.radius,
     padding: 12,
     backgroundColor: COLORS.white,
   },
-  selectedCategory: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  selectedCategoryText: {
+  pickerText: {
     fontSize: SIZES.small,
     color: COLORS.gray800,
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  placeholder: {
-    flex: 1,
-  },
-  placeholderText: {
-    fontSize: SIZES.small,
-    color: COLORS.gray500,
-  },
-  errorText: {
-    color: COLORS.error,
-    fontSize: SIZES.small,
-    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,
@@ -176,61 +104,46 @@ const styles = {
     alignItems: 'center',
     padding: SIZES.padding,
   },
-  modalCard: {
+  modalContent: {
     backgroundColor: COLORS.white,
     borderRadius: SIZES.radius * 2,
-    width: '100%',
-    maxWidth: 400,
+    padding: SIZES.padding,
+    width: '90%',
     maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SIZES.padding * 1.2,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
   },
   modalTitle: {
     fontSize: SIZES.large,
     fontWeight: 'bold',
     color: COLORS.primary,
+    marginBottom: SIZES.margin,
+    textAlign: 'center',
   },
-  closeButton: {
-    padding: 4,
-  },
-  categoryList: {
-    maxHeight: 400,
+  categoriesList: {
+    maxHeight: 300,
   },
   categoryItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SIZES.padding * 1.2,
+    padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray100,
+    borderBottomColor: COLORS.gray200,
   },
-  selectedItem: {
-    backgroundColor: COLORS.primary + '10',
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
+  selectedCategory: {
+    backgroundColor: COLORS.primary + '20',
   },
   categoryIcon: {
-    width: 24,
-    alignItems: 'center',
-  },
-  categoryName: {
-    flex: 1,
     fontSize: SIZES.medium,
-    color: COLORS.gray700,
-    marginLeft: 12,
+    marginRight: 12,
   },
-  selectedCategoryName: {
+  categoryText: {
+    fontSize: SIZES.small,
+    color: COLORS.gray800,
+  },
+  selectedCategoryText: {
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  closeButton: {
+    marginTop: SIZES.margin,
   },
 };

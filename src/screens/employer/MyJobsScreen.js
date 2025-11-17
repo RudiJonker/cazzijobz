@@ -1,4 +1,4 @@
-// src/screens/employer/MyJobsScreen.js - COMPLETE VERSION WITH BETTER UX
+// src/screens/employer/MyJobsScreen.js - FIXED TIMEOUT PERSISTENCE
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -20,13 +20,20 @@ export default function MyJobsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
+  const [dataStale, setDataStale] = useState(false);
 
-  // Check if API call is allowed (spam prevention)
-  const isRefreshAllowed = () => {
-    if (!lastRefreshTime) return true; // First refresh is always allowed
+  // Check if API call is allowed (spam prevention) - UPDATED TO PERSIST
+  const isRefreshAllowed = async () => {
+    // Get from AsyncStorage instead of component state (survives logout/login)
+    const storedRefreshTime = await storageService.getLastJobsRefresh();
+    
+    if (!storedRefreshTime) {
+      console.log('⏱️ First refresh allowed - no previous refresh time');
+      return true; // First refresh is always allowed
+    }
     
     const now = new Date();
-    const lastCall = new Date(lastRefreshTime);
+    const lastCall = new Date(storedRefreshTime);
     const timeSinceLastCall = (now - lastCall) / 1000; // Convert to seconds
     const timeout = 60; // 1 minute timeout for development
     
@@ -34,7 +41,7 @@ export default function MyJobsScreen({ navigation }) {
     
     console.log('⏱️ Refresh Check:', {
       allowed,
-      lastCall: lastRefreshTime,
+      lastCall: storedRefreshTime,
       timeSinceLastCall: `${timeSinceLastCall}s`,
       timeout: `${timeout}s`
     });
@@ -42,15 +49,18 @@ export default function MyJobsScreen({ navigation }) {
     return allowed;
   };
 
-  // Fetch jobs following Type A/B architecture
+  // Fetch jobs - ONLY called manually via pull-to-refresh
   const fetchMyJobs = async (forceRefresh = false) => {
     console.log('🔄 fetchMyJobs called, forceRefresh:', forceRefresh);
     
-    // Check if refresh is allowed (spam prevention)
-    if (forceRefresh && !isRefreshAllowed()) {
-      console.log('🚫 Refresh blocked - within timeout period');
-      setRefreshing(false);
-      return; // No alert - just quietly prevent the refresh
+    // Check if refresh is allowed (spam prevention) - NOW ASYNC
+    if (forceRefresh) {
+      const refreshAllowed = await isRefreshAllowed();
+      if (!refreshAllowed) {
+        console.log('🚫 Refresh blocked - within timeout period');
+        setRefreshing(false);
+        return; // No alert - just quietly prevent the refresh
+      }
     }
     
     let currentUser = user;
@@ -71,38 +81,43 @@ export default function MyJobsScreen({ navigation }) {
       const localJobs = await storageService.getMyJobs();
       console.log('💾 Local jobs found:', localJobs.length);
       
-      if (localJobs.length > 0 && !forceRefresh) {
+      if (localJobs.length > 0) {
         setJobs(localJobs);
         setLoading(false);
+        setDataStale(false); // Data is fresh when loaded from storage
       }
 
-      // STEP 2: Type A call - sync with Supabase (background)
-      console.log('📥 TYPE A CALL - Syncing jobs from Supabase');
-      
-      const { data, error } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('employer_id', currentUser.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      console.log('✅ Supabase jobs fetched:', data?.length || 0);
-      
-      // STEP 3: Update local storage and state
-      if (data && data.length > 0) {
-        await storageService.setMyJobs(data);
-        setJobs(data);
+      // STEP 2: Only make API call if explicitly requested (pull-to-refresh)
+      if (forceRefresh) {
+        console.log('📥 TYPE A CALL - Manual refresh from Supabase');
         
-        // Update last refresh time for spam prevention
-        if (forceRefresh) {
-          setLastRefreshTime(new Date().toISOString());
-          console.log('✅ Refresh completed, timeout timer started');
+        const { data, error } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('employer_id', currentUser.id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        console.log('✅ Supabase jobs fetched:', data?.length || 0);
+        
+        // STEP 3: Update local storage and state
+        if (data && data.length > 0) {
+          await storageService.setMyJobs(data);
+          setJobs(data);
+          setDataStale(false); // Data is now fresh
+          
+          // Save to AsyncStorage instead of component state (survives logout/login)
+          const refreshTime = new Date().toISOString();
+          await storageService.setLastJobsRefresh(refreshTime);
+          setLastRefreshTime(refreshTime); // Keep in state for UI
+          console.log('✅ Manual refresh completed - time saved to storage');
+        } else if (data && data.length === 0) {
+          // Clear local storage if no jobs on server
+          await storageService.setMyJobs([]);
+          setJobs([]);
+          setDataStale(false);
         }
-      } else if (data && data.length === 0) {
-        // Clear local storage if no jobs on server
-        await storageService.setMyJobs([]);
-        setJobs([]);
       }
 
     } catch (error) {
@@ -125,49 +140,65 @@ export default function MyJobsScreen({ navigation }) {
     }
   };
 
-  // Initial load - check local storage immediately
+  // Initial load - ONLY from local storage, NO API call
   useEffect(() => {
     const initializeJobs = async () => {
-      console.log('🚀 MyJobsScreen mounted');
+      console.log('🚀 MyJobsScreen mounted - loading from local storage only');
       
-      // Load from local storage first (immediate)
+      // Load last refresh time from AsyncStorage (survives logout/login)
+      const storedRefreshTime = await storageService.getLastJobsRefresh();
+      if (storedRefreshTime) {
+        setLastRefreshTime(storedRefreshTime);
+        console.log('⏱️ Loaded previous refresh time:', storedRefreshTime);
+      }
+      
+      // Load from local storage ONLY (no API call)
       const localJobs = await storageService.getMyJobs();
       if (localJobs.length > 0) {
         console.log('⚡ Immediate local load:', localJobs.length, 'jobs');
         setJobs(localJobs);
-        setLoading(false);
+        
+        // Check if data might be stale (no recent refresh)
+        const now = new Date();
+        if (storedRefreshTime) {
+          const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60; // minutes
+          if (timeSinceLastRefresh > 5) { // 5 minutes threshold
+            setDataStale(true);
+            console.log('📱 Data may be stale - last refresh was', timeSinceLastRefresh.toFixed(0), 'minutes ago');
+          }
+        }
+      } else {
+        console.log('💾 No local jobs found - user needs to post first job');
       }
       
-      // Then sync with Supabase (background)
-      fetchMyJobs();
+      setLoading(false);
     };
 
     initializeJobs();
   }, []);
 
-  // Listen for navigation events (when coming from PostJob)
+  // Navigation focus - ONLY set stale indicator, NO API calls
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('🎯 MyJobsScreen focused, checking for updates');
-      fetchMyJobs(true); // Force refresh when screen comes into focus
+      console.log('🎯 MyJobsScreen focused - NO API calls');
+      
+      // Check if data might be stale, but DO NOT make API calls
+      const now = new Date();
+      const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000; // 5 minutes
+      
+      if (isStale) {
+        setDataStale(true); // Just set a flag - NO API CALL
+        console.log('📱 Data may be stale - showing refresh indicator');
+      }
     });
-
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, lastRefreshTime]);
 
-  // Pull to refresh with spam prevention (better UX)
+  // Pull to refresh - ONLY manual API calls allowed
   const onRefresh = () => {
-    console.log('⬇️ Pull to refresh triggered');
-    
-    // Check if refresh is allowed (spam prevention)
-    if (!isRefreshAllowed()) {
-      console.log('🚫 Refresh blocked - within timeout period');
-      setRefreshing(false); // Immediately stop the refresh animation
-      return; // No alert - just quietly prevent the refresh
-    }
-    
+    console.log('⬇️ Pull to refresh triggered - manual API call');
     setRefreshing(true);
-    fetchMyJobs(true); // Force refresh from Supabase
+    fetchMyJobs(true); // Force refresh from Supabase (ONLY manual trigger)
   };
 
   // Format date to "Saturday, 12 March"
@@ -221,15 +252,14 @@ export default function MyJobsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header with sync status */}
+      {/* Header with stale indicator */}
       <View style={styles.header}>
         <Text style={styles.title}>My Jobs</Text>
         <Text style={styles.subtitle}>
-          {jobs.length} job{jobs.length !== 1 ? 's' : ''} • {
-            refreshing ? 'Syncing...' : 
-            lastRefreshTime ? `Updated ${new Date(lastRefreshTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
-            'Pull to refresh'
-          }
+          {jobs.length} job{jobs.length !== 1 ? 's' : ''} • 
+          {dataStale ? ' 🔄 Refresh available' : 
+           lastRefreshTime ? ` Updated ${new Date(lastRefreshTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 
+           'Pull to refresh'}
         </Text>
       </View>
 
@@ -262,20 +292,23 @@ export default function MyJobsScreen({ navigation }) {
             <TouchableOpacity
               key={job.id}
               style={styles.jobCard}
-              onPress={() => navigation.navigate('Home')}
+              onPress={() => navigation.navigate('JobDetail', { jobId: job.id })}
             >
-              {/* Job Reference & Actions */}
+              {/* Job Reference & Status */}
               <View style={styles.cardHeader}>
-                <Text style={styles.jobReference}>{job.job_reference || 'N/A'}</Text>
+                <View style={styles.headerLeft}>
+                  <Text style={styles.jobReference}>{job.job_reference || 'N/A'}</Text>
+                  <Text style={[styles.statusText, { color: getStatusColor(job.status) }]}>
+                    {getStatusText(job.status)}
+                  </Text>
+                </View>
                 <View style={styles.actions}>
-                  <TouchableOpacity style={styles.actionButton}>
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => navigation.navigate('JobDetail', { jobId: job.id })}
+                  >
                     <Text style={styles.actionIcon}>🔍</Text>
                   </TouchableOpacity>
-                  {job.status === 'open' && (
-                    <TouchableOpacity style={styles.actionButton}>
-                      <Text style={styles.actionIcon}>✏️</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
               </View>
 
@@ -289,15 +322,10 @@ export default function MyJobsScreen({ navigation }) {
               <View style={styles.cardFooter}>
                 <Button
                   title={`View Applicants (${job.applicant_count || 0})`}
-                  onPress={() => navigation.navigate('Home')}
+                  onPress={() => navigation.navigate('JobDetail', { jobId: job.id })}
                   style={styles.applicantButton}
                   textStyle={styles.applicantButtonText}
                 />
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(job.status) }]}>
-                  <Text style={styles.statusText}>
-                    {getStatusText(job.status)}
-                  </Text>
-                </View>
               </View>
             </TouchableOpacity>
           ))
@@ -370,16 +398,26 @@ const styles = {
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  headerLeft: {
+    flex: 1,
   },
   jobReference: {
     fontSize: SIZES.medium,
     fontWeight: 'bold',
     color: COLORS.primary,
+    marginBottom: 2,
+  },
+  statusText: {
+    fontSize: SIZES.xxSmall,
+    fontWeight: '600',
+    fontStyle: 'italic',
   },
   actions: {
     flexDirection: 'row',
+    marginLeft: 8,
   },
   actionButton: {
     padding: 4,
@@ -401,11 +439,11 @@ const styles = {
   },
   cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   applicantButton: {
-    backgroundColor: COLORS.gray100,
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: SIZES.radius,
@@ -413,17 +451,7 @@ const styles = {
   },
   applicantButtonText: {
     fontSize: SIZES.xSmall,
-    color: COLORS.gray700,
-    fontWeight: '500',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
-    fontSize: SIZES.xSmall,
     color: COLORS.white,
-    fontWeight: 'bold',
+    fontWeight: '500',
   },
 };

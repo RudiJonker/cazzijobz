@@ -1,4 +1,4 @@
-// src/utils/storageService.js
+// src/utils/storageService.js - ADD JOBS REFRESH TRACKING
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const storageService = {
@@ -169,6 +169,37 @@ export const storageService = {
     } catch (error) {
       console.error('Error clearing jobs data:', error);
     }
+  },
+
+  // ✅ NEW: Jobs refresh time tracking (PERSISTS ACROSS LOGOUT/LOGIN)
+  setLastJobsRefresh: async (timestamp) => {
+    try {
+      await AsyncStorage.setItem('last_jobs_refresh', timestamp);
+      console.log('⏱️ Jobs refresh time saved:', timestamp);
+    } catch (error) {
+      console.error('Error saving jobs refresh time:', error);
+    }
+  },
+
+  getLastJobsRefresh: async () => {
+    try {
+      const timestamp = await AsyncStorage.getItem('last_jobs_refresh');
+      console.log('⏱️ Jobs refresh time loaded:', timestamp);
+      return timestamp;
+    } catch (error) {
+      console.error('Error getting jobs refresh time:', error);
+      return null;
+    }
+  },
+
+  // ✅ NEW: Clear jobs refresh time (optional)
+  clearLastJobsRefresh: async () => {
+    try {
+      await AsyncStorage.removeItem('last_jobs_refresh');
+      console.log('⏱️ Jobs refresh time cleared');
+    } catch (error) {
+      console.error('Error clearing jobs refresh time:', error);
+    }
   }
 };
 
@@ -179,3 +210,6 @@ export const addJobToStorage = storageService.addJobToStorage;
 export const updateJobInStorage = storageService.updateJobInStorage;
 export const deleteJobFromStorage = storageService.deleteJobFromStorage;
 export const clearJobsData = storageService.clearJobsData;
+export const setLastJobsRefresh = storageService.setLastJobsRefresh;
+export const getLastJobsRefresh = storageService.getLastJobsRefresh;
+export const clearLastJobsRefresh = storageService.clearLastJobsRefresh;
