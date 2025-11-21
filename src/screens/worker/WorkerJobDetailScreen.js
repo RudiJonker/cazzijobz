@@ -1,4 +1,4 @@
-// src/screens/worker/WorkerJobDetailScreen.js - PROPER SAFE AREA
+// src/screens/worker/WorkerJobDetailScreen.js - UPDATED WITH IMPROVEMENTS
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,7 +7,7 @@ import {
   Alert
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context'; // PROPER IMPORT
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabaseClient';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
@@ -96,6 +96,19 @@ export default function WorkerJobDetailScreen() {
     }
   };
 
+  // Helper function to format status display
+  const getStatusDisplay = (status) => {
+    const statusMap = {
+      'open': 'Open',
+      'hired': 'Filled',
+      'active': 'In Progress',
+      'completed': 'Completed',
+      'cancelled': 'Cancelled',
+      'expired': 'Expired'
+    };
+    return statusMap[status] || status;
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -120,7 +133,7 @@ export default function WorkerJobDetailScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        {/* STICKY AdMob Banner - Stays fixed at top */}
+        {/* STICKY AdMob Banner - UPDATED: Added top margin */}
         <View style={styles.stickyAdBanner}>
           <Text style={styles.adText}>AdMob Banner Placeholder</Text>
           <Text style={styles.adSubtext}>This ad stays visible while scrolling</Text>
@@ -134,18 +147,24 @@ export default function WorkerJobDetailScreen() {
         >
           {/* Job Details Card */}
           <View style={styles.detailCard}>
-            {/* Job Reference & Wage - CLEAN ALIGNMENT */}
+            {/* Job Reference & Status - UPDATED LAYOUT */}
             <View style={styles.cardHeader}>
               <View style={styles.headerLeft}>
                 <Text style={styles.jobReference}>{job.job_reference}</Text>
-                <Text style={[styles.statusText, { color: '#10b981' }]}>
-                  Open for Applications
+                {/* UPDATED: Show actual job status */}
+                <Text style={[styles.statusText, { color: job.status === 'open' ? '#10b981' : '#6b7280' }]}>
+                  Status: {getStatusDisplay(job.status)}
                 </Text>
               </View>
-              <Text style={styles.wageAmount}>R {job.budget}</Text>
+              {/* UPDATED: Brighter wage color */}
+              <Text style={styles.wageAmount}>{job.budget_currency} {job.budget}</Text>
             </View>
 
-            <Text style={styles.category}>{job.category}</Text>
+            {/* UPDATED: Category styled like other detail rows */}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Category:</Text>
+              <Text style={styles.categoryValue}>{job.category}</Text>
+            </View>
             
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Description:</Text>
@@ -174,20 +193,28 @@ export default function WorkerJobDetailScreen() {
               <Text style={styles.detailValue}>{job.duration_hours} hours</Text>
             </View>
 
-            {/* Apply Button */}
-            <Button
-              title={applying ? "Applying..." : "Apply for this Job"}
-              onPress={handleApply}
-              style={styles.applyButton}
-              disabled={applying}
-            />
+            {/* UPDATED: Button Row with Apply and Back */}
+            <View style={styles.buttonRow}>
+              <Button
+                title="Back"
+                onPress={() => navigation.goBack()}
+                variant="outline"
+                style={styles.backButton}
+              />
+              <Button
+                title={applying ? "Applying..." : "Apply"}
+                onPress={handleApply}
+                style={styles.applyButton}
+                disabled={applying || job.status !== 'open'}
+              />
+            </View>
           </View>
 
           {/* Additional Info */}
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>About this Job</Text>
             <Text style={styles.infoText}>
-              • This job is open for applications{'\n'}
+              • This job is {job.status === 'open' ? 'open for applications' : getStatusDisplay(job.status).toLowerCase()}{'\n'}
               • You can apply if you're available on the scheduled date{'\n'}
               • The employer will review your profile{'\n'}
               • You'll be notified if you're hired{'\n'}
@@ -211,10 +238,10 @@ const styles = {
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  // STICKY Ad Banner - Fixed at top, always visible
+  // STICKY Ad Banner - UPDATED: Added top margin
   stickyAdBanner: {
     position: 'absolute',
-    top: -15,
+    top: 15, // CHANGED: Added 15px top margin
     left: 0,
     right: 0,
     backgroundColor: COLORS.gray200,
@@ -223,7 +250,7 @@ const styles = {
     justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray300,
-    zIndex: 1000, // Ensure it stays above other content
+    zIndex: 1000,
   },
   adText: {
     color: COLORS.gray600,
@@ -239,15 +266,15 @@ const styles = {
   // Scrollable content area (stops before footer safe zone)
   scrollView: {
     flex: 1,
-    marginTop: 60, // Space for the sticky ad banner
+    marginTop: 80, // UPDATED: Increased to accommodate banner with margin
   },
   scrollContent: {
     paddingBottom: 10,
   },
-  // PERMANENT FOOTER SAFE ZONE - Always behind system buttons
+  // PERMANENT FOOTER SAFE ZONE
   footerSafeZone: {
-    height: 50, // Permanent space for system navigation
-    backgroundColor: COLORS.white, // Same as background
+    height: 50,
+    backgroundColor: COLORS.white,
     borderTopWidth: 1,
     borderTopColor: COLORS.gray200,
   },
@@ -265,7 +292,7 @@ const styles = {
     shadowRadius: 4,
     elevation: 2,
   },
-  // Card Header with job reference and wage - CLEAN ALIGNMENT
+  // Card Header with job reference and wage
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -287,21 +314,13 @@ const styles = {
   statusText: {
     fontSize: SIZES.small,
     fontWeight: '600',
-    fontStyle: 'italic',
   },
-  // Clean Wage Amount - No label
+  // UPDATED: Brighter wage color
   wageAmount: {
-    fontSize: SIZES.large, // Same size as job reference
-    fontWeight: 'bold',
-    color: COLORS.success,
-    marginLeft: 8,
-  },
-  category: {
     fontSize: SIZES.large,
     fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: SIZES.margin,
-    textAlign: 'center',
+    color: '#059669', // CHANGED: Brighter green
+    marginLeft: 8,
   },
   detailRow: {
     flexDirection: 'row',
@@ -318,8 +337,25 @@ const styles = {
     color: COLORS.gray800,
     flex: 1,
   },
-  applyButton: {
+  // NEW: Category value with blue bold styling
+  categoryValue: {
+    fontSize: SIZES.small,
+    color: COLORS.primary, // Blue color
+    fontWeight: 'bold', // Bold font
+    flex: 1,
+  },
+  // UPDATED: Button row layout
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: SIZES.margin,
+    gap: 12,
+  },
+  backButton: {
+    flex: 1,
+  },
+  applyButton: {
+    flex: 1,
     backgroundColor: COLORS.success,
   },
   infoCard: {

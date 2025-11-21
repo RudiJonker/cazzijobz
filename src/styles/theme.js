@@ -28,7 +28,7 @@ export const COLORS = {
 
 export const SIZES = {
   // Padding & Margins
-  padding: 16,
+  padding: 12,
   margin: 16,
   
   // Border Radius

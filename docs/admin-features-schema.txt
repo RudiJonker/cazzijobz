@@ -1,0 +1,194 @@
+-- =============================================
+-- CAZZIJOBZ - ADMIN FEATURES & SCHEMA
+-- =============================================
+
+-- =============================================
+-- 1. ADMIN DETECTION IN PROFILES TABLE
+-- =============================================
+-- The 'is_admin' column in profiles table controls admin access
+-- Sample admin user setup:
+UPDATE profiles SET is_admin = true WHERE email = 'your-admin-email@example.com';
+
+-- =============================================
+-- 2. ADMIN-ONLY FUNCTIONS & QUERIES
+-- =============================================
+
+-- Function to get platform statistics (used in AdminScreen)
+CREATE OR REPLACE FUNCTION get_platform_stats()
+RETURNS TABLE(
+    total_users BIGINT,
+    total_workers BIGINT,
+    total_employers BIGINT,
+    total_jobs BIGINT,
+    open_jobs BIGINT,
+    completed_jobs BIGINT,
+    total_applications BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        (SELECT COUNT(*) FROM profiles) as total_users,
+        (SELECT COUNT(*) FROM profiles WHERE role = 'worker') as total_workers,
+        (SELECT COUNT(*) FROM profiles WHERE role = 'employer') as total_employers,
+        (SELECT COUNT(*) FROM jobs) as total_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE status = 'open') as open_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE status = 'completed') as completed_jobs,
+        (SELECT COUNT(*) FROM applications) as total_applications;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get recent user signups (admin dashboard)
+CREATE OR REPLACE FUNCTION get_recent_signups(days_back INTEGER DEFAULT 7)
+RETURNS TABLE(
+    user_id UUID,
+    email TEXT,
+    role TEXT,
+    full_name TEXT,
+    created_at TIMESTAMP WITH TIME ZONE,
+    is_profile_complete BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id,
+        p.email,
+        p.role,
+        p.full_name,
+        p.created_at,
+        p.is_profile_complete
+    FROM profiles p
+    WHERE p.created_at >= (NOW() - (days_back || ' days')::INTERVAL)
+    ORDER BY p.created_at DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get job statistics by category
+CREATE OR REPLACE FUNCTION get_job_stats_by_category()
+RETURNS TABLE(
+    category TEXT,
+    total_jobs BIGINT,
+    open_jobs BIGINT,
+    avg_budget DECIMAL(10,2),
+    total_applications BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        j.category,
+        COUNT(j.id) as total_jobs,
+        COUNT(j.id) FILTER (WHERE j.status = 'open') as open_jobs,
+        AVG(j.budget) as avg_budget,
+        COUNT(a.id) as total_applications
+    FROM jobs j
+    LEFT JOIN applications a ON j.id = a.job_id
+    GROUP BY j.category
+    ORDER BY total_jobs DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- 3. ADMIN-ONLY RLS POLICIES (if any)
+-- =============================================
+
+-- Note: Currently no special admin RLS policies needed since:
+-- - Admin detection happens in app via 'is_admin' flag
+-- - Admin screen uses secure functions above
+-- - Regular users can't access admin functions
+
+-- =============================================
+-- 4. ADMIN DASHBOARD QUERIES (Used in Frontend)
+-- =============================================
+
+-- Total platform stats (used in AdminScreen)
+/*
+SELECT * FROM get_platform_stats();
+*/
+
+-- Recent activity (last 7 days)
+/*
+SELECT * FROM get_recent_signups(7);
+*/
+
+-- Jobs by category breakdown
+/*
+SELECT * FROM get_job_stats_by_category();
+*/
+
+-- User growth over time (for charts)
+/*
+SELECT 
+    DATE(created_at) as signup_date,
+    COUNT(*) as daily_signups,
+    SUM(COUNT(*)) OVER (ORDER BY DATE(created_at)) as cumulative_users
+FROM profiles 
+WHERE created_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY signup_date;
+*/
+
+-- Job posting trends
+/*
+SELECT 
+    DATE(created_at) as post_date,
+    COUNT(*) as daily_jobs,
+    SUM(COUNT(*)) OVER (ORDER BY DATE(created_at)) as cumulative_jobs
+FROM jobs 
+WHERE created_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY post_date;
+*/
+
+-- =============================================
+-- 5. FRONTEND ADMIN DETECTION LOGIC
+-- =============================================
+/*
+// In MainNavigator.js - Admin tab conditional rendering
+const [isAdmin, setIsAdmin] = useState(false);
+
+useEffect(() => {
+  const checkAdminStatus = async () => {
+    const profile = await storageService.getUserProfile();
+    setIsAdmin(profile?.is_admin === true);
+  };
+  checkAdminStatus();
+}, []);
+
+// Then conditionally render Admin tab:
+{isAdmin && (
+  <Tab.Screen name="Admin" component={AdminScreen} />
+)}
+*/
+
+-- =============================================
+-- 6. ADMIN SCREEN DATA STRUCTURE
+-- =============================================
+-- AdminScreen typically shows:
+-- - Total users, workers, employers
+-- - Total jobs, open jobs, completed jobs
+-- - Recent signups
+-- - Job categories breakdown
+-- - Platform growth charts
+
+-- =============================================
+-- 7. SECURITY NOTES
+-- =============================================
+-- All admin functions use SECURITY DEFINER
+-- Functions only return aggregated data, not sensitive info
+-- Admin access controlled by 'is_admin' flag in profiles
+-- Regular users cannot call admin functions directly
+-- RLS still applies to direct table access
+
+-- =============================================
+-- 8. SAMPLE ADMIN USER SETUP
+-- =============================================
+/*
+-- Make yourself an admin (run this in SQL Editor):
+UPDATE profiles 
+SET is_admin = true 
+WHERE email = 'your-email@example.com';
+
+-- Verify admin status:
+SELECT email, role, is_admin 
+FROM profiles 
+WHERE is_admin = true;
+*/

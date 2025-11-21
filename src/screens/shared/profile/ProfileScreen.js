@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   saveButton: {
-    padding: 16,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 10,
@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   signOutButton: {
-    padding: 16,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,

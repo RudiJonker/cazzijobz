@@ -1,0 +1,228 @@
+Unfortunately, Supabase doesn't provide real-time API call tracking at the database level that you can query directly. However, we can implement our own tracking system. Here's how:
+
+📊 API CALL TRACKING SYSTEM
+sql
+-- =============================================
+-- CAZZIJOBZ - API CALL TRACKING SYSTEM
+-- =============================================
+
+-- =============================================
+-- 1. API CALLS TRACKING TABLE
+-- =============================================
+CREATE TABLE api_call_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    endpoint TEXT NOT NULL,
+    method TEXT NOT NULL CHECK (method IN ('GET', 'POST', 'PUT', 'PATCH', 'DELETE')),
+    call_type TEXT NOT NULL CHECK (call_type IN ('A', 'B')),
+    response_status INTEGER,
+    duration_ms INTEGER,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    user_agent TEXT,
+    ip_address INET
+);
+
+-- RLS for api_call_logs (admin only)
+ALTER TABLE api_call_logs ENABLE ROW LEVEL SECURITY;
+
+-- Only admins can view API call logs
+CREATE POLICY "Only admins can view API logs" ON api_call_logs
+FOR SELECT USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+);
+
+-- Anyone can insert logs (for tracking)
+CREATE POLICY "Anyone can log API calls" ON api_call_logs
+FOR INSERT WITH CHECK (true);
+
+-- =============================================
+-- 2. TRACKING FUNCTIONS FOR ADMIN
+-- =============================================
+
+-- Function to get API call statistics
+CREATE OR REPLACE FUNCTION get_api_call_stats(
+    days_back INTEGER DEFAULT 7,
+    group_by_hours INTEGER DEFAULT 24
+)
+RETURNS TABLE(
+    period_start TIMESTAMP WITH TIME ZONE,
+    total_calls BIGINT,
+    type_a_calls BIGINT,
+    type_b_calls BIGINT,
+    avg_duration_ms DECIMAL(10,2),
+    unique_users BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        DATE_TRUNC('hour', timestamp) AS period_start,
+        COUNT(*) as total_calls,
+        COUNT(*) FILTER (WHERE call_type = 'A') as type_a_calls,
+        COUNT(*) FILTER (WHERE call_type = 'B') as type_b_calls,
+        AVG(duration_ms) as avg_duration_ms,
+        COUNT(DISTINCT user_id) as unique_users
+    FROM api_call_logs
+    WHERE timestamp >= NOW() - (days_back || ' days')::INTERVAL
+    GROUP BY DATE_TRUNC('hour', timestamp)
+    ORDER BY period_start DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get endpoint usage breakdown
+CREATE OR REPLACE FUNCTION get_endpoint_stats(days_back INTEGER DEFAULT 7)
+RETURNS TABLE(
+    endpoint TEXT,
+    method TEXT,
+    total_calls BIGINT,
+    avg_duration_ms DECIMAL(10,2),
+    success_rate DECIMAL(5,2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        endpoint,
+        method,
+        COUNT(*) as total_calls,
+        AVG(duration_ms) as avg_duration_ms,
+        (COUNT(*) FILTER (WHERE response_status BETWEEN 200 AND 299) * 100.0 / COUNT(*)) as success_rate
+    FROM api_call_logs
+    WHERE timestamp >= NOW() - (days_back || ' days')::INTERVAL
+    GROUP BY endpoint, method
+    ORDER BY total_calls DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to get real-time API usage (last 24 hours)
+CREATE OR REPLACE FUNCTION get_realtime_api_usage()
+RETURNS TABLE(
+    period TEXT,
+    total_calls BIGINT,
+    type_a_calls BIGINT,
+    type_b_calls BIGINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        'last_hour' as period,
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '1 hour') as total_calls,
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '1 hour' AND call_type = 'A') as type_a_calls,
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '1 hour' AND call_type = 'B') as type_b_calls
+    FROM api_call_logs
+    
+    UNION ALL
+    
+    SELECT 
+        'last_24_hours',
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '24 hours'),
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '24 hours' AND call_type = 'A'),
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '24 hours' AND call_type = 'B')
+    
+    UNION ALL
+    
+    SELECT 
+        'last_7_days',
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '7 days'),
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '7 days' AND call_type = 'A'),
+        COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '7 days' AND call_type = 'B');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- 3. FRONTEND INTEGRATION
+-- =============================================
+
+-- In your useSupabase.js hook, add tracking:
+/*
+export const useSupabase = () => {
+  const trackApiCall = async (endpoint, method, callType, duration, status) => {
+    try {
+      await supabase
+        .from('api_call_logs')
+        .insert({
+          user_id: user?.id,
+          endpoint,
+          method,
+          call_type: callType,
+          duration_ms: duration,
+          response_status: status
+        });
+    } catch (error) {
+      console.error('Failed to track API call:', error);
+      // Don't break the app if tracking fails
+    }
+  };
+
+  // Modified typeACall and typeBCall to include tracking
+  const typeACall = async (operation, supabaseFunction) => {
+    const startTime = Date.now();
+    try {
+      const result = await supabaseFunction();
+      const duration = Date.now() - startTime;
+      await trackApiCall(operation, 'POST', 'A', duration, 200);
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      await trackApiCall(operation, 'POST', 'A', duration, 500);
+      throw error;
+    }
+  };
+};
+*/
+
+-- =============================================
+-- 4. ADMIN SCREEN QUERIES
+-- =============================================
+
+-- Real-time usage for admin dashboard
+/*
+SELECT * FROM get_realtime_api_usage();
+*/
+
+-- Daily breakdown for charts
+/*
+SELECT 
+    DATE(timestamp) as call_date,
+    COUNT(*) as daily_calls,
+    COUNT(*) FILTER (WHERE call_type = 'A') as daily_type_a,
+    COUNT(*) FILTER (WHERE call_type = 'B') as daily_type_b
+FROM api_call_logs 
+WHERE timestamp >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(timestamp)
+ORDER BY call_date;
+*/
+
+-- Top endpoints (identify heavy usage)
+/*
+SELECT * FROM get_endpoint_stats(7);
+*/
+
+-- =============================================
+-- 5. SUPABASE LIMIT MONITORING
+-- =============================================
+/*
+Supabase Pro plan limits (example):
+- 50,000 monthly active users
+- 2 million API requests/month
+- 500 concurrent connections
+
+Use these queries to monitor against your limits:
+*/
+
+-- Estimated monthly usage projection
+/*
+SELECT 
+    COUNT(*) as current_month_calls,
+    (COUNT(*) * 30.0 / EXTRACT(DAY FROM NOW())) as projected_monthly_calls
+FROM api_call_logs 
+WHERE timestamp >= DATE_TRUNC('month', NOW());
+*/
+
+-- =============================================
+-- 6. SETUP INSTRUCTIONS
+-- =============================================
+/*
+1. Run the SQL above to create the tracking table and functions
+2. Update your useSupabase.js hook to track all API calls
+3. Update AdminScreen to display API usage statistics
+4. Monitor usage against your Supabase plan limits
+*/

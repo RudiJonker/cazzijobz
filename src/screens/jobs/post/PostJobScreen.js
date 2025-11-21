@@ -1,4 +1,4 @@
-// src/screens/jobs/post/PostJobScreen.js - CLEANED UP VERSION
+// src/screens/jobs/post/PostJobScreen.js - UPDATED WITH CURRENCY DETECTION
 import React, { useState } from 'react';
 import { 
   View, 
@@ -32,6 +32,9 @@ export default function PostJobScreen() {
     duration_hours: '',
     budget: '',
   });
+  
+  // NEW: Currency state to capture detected currency
+  const [currency, setCurrency] = useState({ symbol: 'R', code: 'ZAR' });
 
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,6 +60,12 @@ export default function PostJobScreen() {
       
       return newData;
     });
+  };
+
+  // NEW: Handle currency detection from JobBudgetField
+  const handleCurrencyChange = (detectedCurrency) => {
+    console.log('💰 Currency detected:', detectedCurrency);
+    setCurrency(detectedCurrency);
   };
 
   // Simple validation
@@ -110,6 +119,7 @@ export default function PostJobScreen() {
       }
 
       console.log('👤 User ID:', user.id);
+      console.log('💰 Using currency:', currency);
 
       const jobData = {
         employer_id: user.id,
@@ -123,7 +133,7 @@ export default function PostJobScreen() {
         time_to: formData.end_time,
         duration_hours: parseFloat(formData.duration_hours) || 0,
         budget: parseFloat(formData.budget) || 0,
-        budget_currency: 'ZAR',
+        budget_currency: currency.code, // CHANGED: Use detected currency instead of hard-coded 'ZAR'
         status: 'open',
         applicant_count: 0,
       };
@@ -142,23 +152,33 @@ export default function PostJobScreen() {
       }
 
       console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
-      
-      // Save job to local storage immediately
-      await storageService.addJobToStorage(data);
-      console.log('💾 Job saved to local storage');
+console.log('💰 Currency saved:', data.budget_currency);
 
-      // Reset form
-      setFormData({
-        category: '',
-        description: '',
-        location_city: '',
-        location_suburb: '',
-        scheduled_date: '',
-        start_time: '',
-        end_time: '',
-        duration_hours: '',
-        budget: '',
-      });
+// FIXED: Save job to employer's local storage
+try {
+  const existingJobs = await storageService.getMyJobs() || [];
+  const updatedJobs = [data, ...existingJobs];
+  await storageService.setMyJobs(updatedJobs);
+  console.log('💾 Job saved to employer local storage');
+} catch (storageError) {
+  console.log('💾 Could not save job to local storage, but Supabase save was successful');
+}
+
+// Reset form
+setFormData({
+  category: '',
+  description: '',
+  location_city: '',
+  location_suburb: '',
+  scheduled_date: '',
+  start_time: '',
+  end_time: '',
+  duration_hours: '',
+  budget: '',
+});
+
+// Reset currency to default
+setCurrency({ symbol: 'R', code: 'ZAR' });
       
       setShowConfirmation(false);
       
@@ -230,10 +250,11 @@ export default function PostJobScreen() {
           onTimeChange={updateTimeField}
         />
 
-        {/* Budget Field */}
+        {/* Budget Field - UPDATED: Added currency callback */}
         <JobBudgetField
           value={formData.budget}
           onChange={(value) => updateField('budget', value)}
+          onCurrencyChange={handleCurrencyChange} // NEW: Currency detection callback
         />
 
         {/* Submit Button */}
@@ -273,7 +294,7 @@ export default function PostJobScreen() {
                 </Text>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Budget: </Text>
-                  R {formData.budget}
+                  {currency.symbol} {formData.budget} ({currency.code})
                 </Text>
               </View>
 

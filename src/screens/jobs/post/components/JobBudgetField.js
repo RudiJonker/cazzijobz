@@ -1,4 +1,4 @@
-// src/screens/jobs/post/components/JobBudgetField.js
+// src/screens/jobs/post/components/JobBudgetField.js - FIXED INFINITE LOOP
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { TextInput } from 'react-native';
@@ -6,12 +6,11 @@ import { COLORS, SIZES } from '../../../../styles/theme';
 import { Ionicons } from '@expo/vector-icons';
 import * as Localization from 'expo-localization';
 
-export default function JobBudgetField({ value, onChange, error }) {
+export default function JobBudgetField({ value, onChange, onCurrencyChange, error }) {
   const [currency, setCurrency] = useState({ symbol: 'R', code: 'ZAR' });
 
   useEffect(() => {
     const detectCurrency = () => {
-      // Get currency from device locale settings (simpler approach)
       const locales = Localization.getLocales();
       
       if (locales.length > 0) {
@@ -24,12 +23,19 @@ export default function JobBudgetField({ value, onChange, error }) {
         }
       }
 
-      // Default fallback
       return { symbol: 'R', code: 'ZAR' };
     };
 
-    setCurrency(detectCurrency());
-  }, []);
+    const detectedCurrency = detectCurrency();
+    setCurrency(detectedCurrency);
+    
+    // NEW: Only notify parent if currency actually changed
+    if (onCurrencyChange && 
+        (detectedCurrency.code !== currency.code || 
+         detectedCurrency.symbol !== currency.symbol)) {
+      onCurrencyChange(detectedCurrency);
+    }
+  }, []); // FIXED: Empty dependency array - run only once on mount
 
   const showCurrencyInfo = () => {
     Alert.alert(

@@ -317,7 +317,7 @@ export default function EditJobScreen() {
                   style={[styles.button, { backgroundColor: COLORS.gray500 }]}
                 />
                 <Button
-                  title={isSubmitting ? "Updating..." : "Update Job"}
+                  title={isSubmitting ? "Updating..." : "Update"}
                   onPress={handleUpdateJob}
                   style={styles.button}
                   loading={isSubmitting}

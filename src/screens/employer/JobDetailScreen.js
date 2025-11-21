@@ -1,5 +1,6 @@
-// src/screens/employer/JobDetailScreen.js - FIXED API CALLS
+// src/screens/employer/JobDetailScreen.js - WITH BACK BUTTON
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   ScrollView,
@@ -8,6 +9,7 @@ import {
   Alert
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabaseClient';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
@@ -94,11 +96,6 @@ export default function JobDetailScreen() {
     }
   };
 
-  const handleViewApplicants = () => {
-    // This will be implemented later
-    Alert.alert('Coming Soon', 'Applicant management will be available in the next update.');
-  };
-
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
@@ -124,6 +121,19 @@ export default function JobDetailScreen() {
     } catch (error) {
       return timeString;
     }
+  };
+
+  // Helper function to format status display
+  const getStatusDisplay = (status) => {
+    const statusMap = {
+      'open': 'Open',
+      'hired': 'Filled',
+      'active': 'In Progress',
+      'completed': 'Completed',
+      'cancelled': 'Cancelled',
+      'expired': 'Expired'
+    };
+    return statusMap[status] || status;
   };
 
   if (loading) {
@@ -155,77 +165,123 @@ export default function JobDetailScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Clean Header - Just "Job Details" */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Job Details</Text>
-        {needsRefresh && (
-          <TouchableOpacity onPress={handleManualRefresh}>
-            <Text style={styles.refreshText}>🔄 Refresh</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <View style={styles.container}>
+        {/* STICKY AdMob Banner - UPDATED: More top margin */}
+        <View style={styles.stickyAdBanner}>
+          <Text style={styles.adText}>AdMob Banner Placeholder</Text>
+          <Text style={styles.adSubtext}>This ad stays visible while scrolling</Text>
+        </View>
 
-      {/* Job Details Card */}
-      <View style={styles.detailCard}>
-        {/* Job Reference, Status & Edit Button */}
-        <View style={styles.cardHeader}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.jobReference}>{job.job_reference}</Text>
-            <Text style={[styles.statusText, { color: getStatusColor(job.status) }]}>
-              {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+        {/* NEW: Header with Back Button and Title */}
+        <View style={styles.header}>
+  <TouchableOpacity 
+    style={styles.backButton}
+    onPress={() => navigation.goBack()}
+  >
+    <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+    <Text style={styles.backText}>Back</Text>
+  </TouchableOpacity>
+  
+  <Text style={styles.headerTitle}>Job Details</Text>
+  
+  <View style={styles.headerRight}>
+    {needsRefresh && (
+      <TouchableOpacity 
+        style={styles.refreshButton}
+        onPress={handleManualRefresh}
+      >
+        <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
+      </TouchableOpacity>
+    )}
+  </View>
+</View>
+
+        {/* Scrollable Content Area - UPDATED: Increased marginTop */}
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={true}
+        >
+          {/* Job Details Card */}
+          <View style={styles.detailCard}>
+            {/* Job Header with Edit Pencil Icon */}
+            <View style={styles.cardHeader}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.jobReference}>{job.job_reference}</Text>
+                <Text style={[styles.statusText, { color: getStatusColor(job.status) }]}>
+                  Status: {getStatusDisplay(job.status)}
+                </Text>
+              </View>
+              
+              {/* UPDATED: Edit button as pencil icon (only for open jobs) */}
+              {job.status === 'open' && (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={handleEdit}
+                >
+                  <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Category as detail row */}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Category:</Text>
+              <Text style={styles.categoryValue}>{job.category}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Description:</Text>
+              <Text style={styles.detailValue}>{job.description}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Location:</Text>
+              <Text style={styles.detailValue}>{job.location_suburb}, {job.location_city}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Date:</Text>
+              <Text style={styles.detailValue}>{formatDate(job.scheduled_date)}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Time:</Text>
+              <Text style={styles.detailValue}>
+                {formatTime(job.time_from)} - {formatTime(job.time_to)}
+              </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Duration:</Text>
+              <Text style={styles.detailValue}>{job.duration_hours} hours</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Budget:</Text>
+              <Text style={styles.detailValue}>{job.budget_currency} {job.budget}</Text>
+            </View>
+
+            {/* REMOVED: View Applicants button from this screen */}
+          </View>
+
+          {/* Additional Info Card - UPDATED: Remove applicants info */}
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>About this Job</Text>
+            <Text style={styles.infoText}>
+              • This job is {job.status === 'open' ? 'open for applications' : getStatusDisplay(job.status).toLowerCase()}{'\n'}
+              • You can edit this job while it's still open{'\n'}
+              • Applicants will be shown in the main jobs list{'\n'}
+              • Close this job when you've found a worker{'\n'}
             </Text>
           </View>
-          {job.status === 'open' && (
-            <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-              <Text style={styles.editIcon}>✏️</Text>
-              <Text style={styles.editText}>Edit</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        </ScrollView>
 
-        <Text style={styles.category}>{job.category}</Text>
-        
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Description:</Text>
-          <Text style={styles.detailValue}>{job.description}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Location:</Text>
-          <Text style={styles.detailValue}>{job.location_suburb}, {job.location_city}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Date:</Text>
-          <Text style={styles.detailValue}>{formatDate(job.scheduled_date)}</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Time:</Text>
-          <Text style={styles.detailValue}>
-            {formatTime(job.time_from)} - {formatTime(job.time_to)}
-          </Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Duration:</Text>
-          <Text style={styles.detailValue}>{job.duration_hours} hours</Text>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Budget:</Text>
-          <Text style={styles.detailValue}>R {job.budget}</Text>
-        </View>
-
-        {/* View Applicants Button */}
-        <Button
-          title={`View Applicants (${job.applicant_count || 0})`}
-          onPress={handleViewApplicants}
-          style={styles.applicantsButton}
-        />
+        {/* PERMANENT FOOTER SAFE ZONE */}
+        <View style={styles.footerSafeZone} />
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -243,29 +299,96 @@ const getStatusColor = (status) => {
 };
 
 const styles = {
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  // Clean Header - Just "Job Details"
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  // UPDATED: More top margin for the banner
+  stickyAdBanner: {
+    position: 'absolute',
+    top: 10, // CHANGED: Increased from 15 to 35
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.gray200,
+    padding: 12,
     alignItems: 'center',
-    padding: SIZES.padding,
-    backgroundColor: COLORS.white,
+    justifyContent: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
+    borderBottomColor: COLORS.gray300,
+    zIndex: 1000,
   },
-  headerTitle: {
-    fontSize: SIZES.xLarge,
-    fontWeight: 'bold',
-    color: COLORS.primary,
+  adText: {
+    color: COLORS.gray600,
+    fontSize: SIZES.small,
+    fontWeight: '600',
+    marginBottom: 2,
   },
-  refreshText: {
+  adSubtext: {
+    color: COLORS.gray500,
+    fontSize: SIZES.xSmall,
+    fontStyle: 'italic',
+  },
+  // NEW: Header with Back Button
+  header: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: SIZES.padding,
+  paddingTop: 50, // Reduced padding since we don't have system header
+  backgroundColor: COLORS.white,
+  borderBottomWidth: 1,
+  borderBottomColor: COLORS.gray200,
+  marginTop: 35,
+  
+},
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  backText: {
     fontSize: SIZES.small,
     color: COLORS.primary,
     fontWeight: '500',
+    marginLeft: 4,
+  },
+  headerTitle: {
+    fontSize: SIZES.large,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    zIndex: -1,
+  },
+  headerRight: {
+    width: 80, // Balance the back button space
+    alignItems: 'flex-end',
+  },
+  refreshText: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.primary,
+    fontWeight: '500',
+  },
+  // UPDATED: Adjusted marginTop since we have a proper header now
+  scrollView: {
+    flex: 1,
+    marginTop: 0, // CHANGED: Header now handles the spacing
+  },
+  scrollContent: {
+    paddingBottom: 10,
+  },
+  // PERMANENT FOOTER SAFE ZONE
+  footerSafeZone: {
+    height: 50,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
   },
   // Job Details Card
   detailCard: {
@@ -281,7 +404,7 @@ const styles = {
     shadowRadius: 4,
     elevation: 2,
   },
-  // Card Header with job reference, status and edit button
+  // Card Header with job reference and edit button
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -303,32 +426,11 @@ const styles = {
   statusText: {
     fontSize: SIZES.small,
     fontWeight: '600',
-    fontStyle: 'italic',
   },
+  // NEW: Edit button style matching magnifying glass
   editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: COLORS.primary,
-    borderRadius: SIZES.radius,
+    padding: 8,
     marginLeft: 8,
-  },
-  editIcon: {
-    fontSize: SIZES.medium,
-    marginRight: 6,
-  },
-  editText: {
-    fontSize: SIZES.small,
-    color: COLORS.white,
-    fontWeight: '500',
-  },
-  category: {
-    fontSize: SIZES.large,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: SIZES.margin,
-    textAlign: 'center',
   },
   detailRow: {
     flexDirection: 'row',
@@ -345,9 +447,31 @@ const styles = {
     color: COLORS.gray800,
     flex: 1,
   },
-  applicantsButton: {
-    marginTop: SIZES.margin,
-    backgroundColor: COLORS.primary,
+  // NEW: Category value with blue bold styling
+  categoryValue: {
+    fontSize: SIZES.small,
+    color: COLORS.primary, // Blue color
+    fontWeight: 'bold', // Bold font
+    flex: 1,
+  },
+  infoCard: {
+    margin: SIZES.margin,
+    padding: SIZES.padding,
+    backgroundColor: COLORS.gray100,
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+  },
+  infoTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: COLORS.gray800,
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: SIZES.small,
+    color: COLORS.gray600,
+    lineHeight: 20,
   },
   loadingText: {
     textAlign: 'center',

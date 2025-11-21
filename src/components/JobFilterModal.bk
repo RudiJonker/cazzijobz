@@ -1,0 +1,296 @@
+// src/components/JobFilterModal.js - UPDATED WITH CORRECT CATEGORIES & NO WAGE
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ScrollView
+} from 'react-native';
+import { COLORS, SIZES } from '../styles/theme';
+import { Button } from './common/Button';
+
+// Use the same categories as JobCategoryField.js
+const JOB_CATEGORIES = [
+  'General Work', 'Gardening', 'Washing', 'Cleaning', 'Domestic',
+  'Painting', 'Cabling', 'Construction', 'Tiling', 'Heavy Lifting', 'Other'
+];
+
+const JobFilterModal = ({ visible, onClose, onApplyFilters, currentFilters }) => {
+  const [filters, setFilters] = useState(currentFilters || {
+    suburb: '',
+    category: '',
+    date: ''
+    // REMOVED: Wage filters
+  });
+
+  const handleApply = () => {
+    onApplyFilters(filters);
+    onClose();
+  };
+
+  const handleReset = () => {
+    const resetFilters = {
+      suburb: '',
+      category: '',
+      date: ''
+    };
+    setFilters(resetFilters);
+    onApplyFilters(resetFilters);
+    onClose();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Filter Jobs</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={styles.closeButton}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView style={styles.content}>
+          {/* Suburb Filter */}
+          <View style={styles.filterSection}>
+            <Text style={styles.sectionTitle}>Suburb</Text>
+            <Text style={styles.sectionSubtitle}>Filter by location area</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Suburb Name:</Text>
+              <View style={styles.textInput}>
+                <Text style={styles.input}>
+                  {filters.suburb || 'All suburbs'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.quickSuburbs}>
+              {['Central', 'North', 'South', 'East', 'West'].map((area) => (
+                <TouchableOpacity
+                  key={area}
+                  style={[
+                    styles.quickButton,
+                    filters.suburb === area && styles.quickButtonActive
+                  ]}
+                  onPress={() => setFilters({...filters, suburb: area})}
+                >
+                  <Text style={[
+                    styles.quickButtonText,
+                    filters.suburb === area && styles.quickButtonTextActive
+                  ]}>
+                    {area}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Category Filter */}
+          <View style={styles.filterSection}>
+            <Text style={styles.sectionTitle}>Category</Text>
+            <Text style={styles.sectionSubtitle}>Type of work</Text>
+            <View style={styles.categoryGrid}>
+              {JOB_CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryButton,
+                    filters.category === category && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setFilters({...filters, category})}
+                >
+                  <Text style={[
+                    styles.categoryText,
+                    filters.category === category && styles.categoryTextActive
+                  ]}>
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Date Filter */}
+          <View style={styles.filterSection}>
+            <Text style={styles.sectionTitle}>Date</Text>
+            <Text style={styles.sectionSubtitle}>Specific job date</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Date:</Text>
+              <View style={styles.textInput}>
+                <Text style={styles.input}>
+                  {filters.date || 'Any date'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.quickSuburbs}>
+              <TouchableOpacity
+                style={[
+                  styles.quickButton,
+                  filters.date === '' && styles.quickButtonActive
+                ]}
+                onPress={() => setFilters({...filters, date: ''})}
+              >
+                <Text style={[
+                  styles.quickButtonText,
+                  filters.date === '' && styles.quickButtonTextActive
+                ]}>
+                  Any Date
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* REMOVED: Wage Filter Section */}
+        </ScrollView>
+
+        {/* Footer Buttons */}
+        <View style={styles.footer}>
+          <Button
+            title="Reset Filters"
+            onPress={handleReset}
+            variant="outline"
+            style={styles.resetButton}
+          />
+          <Button
+            title="Apply Filters"
+            onPress={handleApply}
+            style={styles.applyButton}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const styles = {
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SIZES.padding,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+  },
+  title: {
+    fontSize: SIZES.large,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  closeButton: {
+    fontSize: SIZES.xLarge,
+    color: COLORS.gray600,
+    fontWeight: 'bold',
+  },
+  content: {
+    flex: 1,
+    padding: SIZES.padding,
+  },
+  filterSection: {
+    marginBottom: SIZES.padding * 1.5,
+  },
+  sectionTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: COLORS.gray800,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: SIZES.small,
+    color: COLORS.gray600,
+    marginBottom: SIZES.margin,
+  },
+  inputContainer: {
+    marginBottom: SIZES.margin,
+  },
+  inputLabel: {
+    fontSize: SIZES.small,
+    color: COLORS.gray700,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: SIZES.radius,
+    padding: SIZES.padding,
+    backgroundColor: COLORS.gray100,
+  },
+  input: {
+    fontSize: SIZES.small,
+    color: COLORS.gray800,
+  },
+  quickSuburbs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: SIZES.radius,
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+  },
+  quickButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  quickButtonText: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray700,
+    fontWeight: '500',
+  },
+  quickButtonTextActive: {
+    color: COLORS.white,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: SIZES.radius,
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+  },
+  categoryButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  categoryText: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray700,
+    fontWeight: '500',
+  },
+  categoryTextActive: {
+    color: COLORS.white,
+  },
+  footer: {
+    flexDirection: 'row',
+    padding: SIZES.padding,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+    gap: SIZES.margin,
+  },
+  resetButton: {
+    flex: 1,
+  },
+  applyButton: {
+    flex: 2,
+  },
+};
+
+export default JobFilterModal;

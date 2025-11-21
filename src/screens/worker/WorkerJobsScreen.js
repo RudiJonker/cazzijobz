@@ -1,4 +1,4 @@
-// src/screens/worker/WorkerJobsScreen.js - COMPLETE FIXED VERSION
+// src/screens/worker/WorkerJobsScreen.js - SIMPLIFIED NO FILTERING
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,7 +12,6 @@ import { supabase } from '../../utils/supabaseClient';
 import { useSupabase } from '../../hooks/useSupabase';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
-import { Button } from '../../components/common/Button';
 
 export default function WorkerJobsScreen({ navigation }) {
   const { user } = useSupabase();
@@ -306,17 +305,18 @@ export default function WorkerJobsScreen({ navigation }) {
                 : 'Complete your profile with your location to see local jobs.'
               }
             </Text>
-            <Button
-              title="Update Profile"
+            <TouchableOpacity 
+              style={styles.updateProfileButton}
               onPress={() => navigation.navigate('Profile')}
-              style={{ marginTop: SIZES.margin }}
-            />
-            <Button
-              title="Refresh Jobs"
+            >
+              <Text style={styles.updateProfileText}>Update Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.refreshButton}
               onPress={onRefresh}
-              style={{ marginTop: SIZES.margin }}
-              variant="outline"
-            />
+            >
+              <Text style={styles.refreshText}>Refresh Jobs</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           jobs.map((job) => (
@@ -329,15 +329,10 @@ export default function WorkerJobsScreen({ navigation }) {
               <View style={styles.cardHeader}>
                 <View style={styles.headerLeft}>
                   <Text style={styles.jobReference}>{job.job_reference}</Text>
+                  {/* CHANGED: Category color to green */}
                   <Text style={styles.jobCategory}>{job.category}</Text>
                 </View>
-                <Text style={styles.budget}>R {job.budget}</Text>
               </View>
-
-              {/* Job Details */}
-              <Text style={styles.jobDescription} numberOfLines={2}>
-                {job.description}
-              </Text>
 
               <View style={styles.locationRow}>
                 <Text style={styles.location}>📍 {job.location_suburb}, {job.location_city}</Text>
@@ -350,12 +345,10 @@ export default function WorkerJobsScreen({ navigation }) {
                 </Text>
               </View>
 
-              {/* Action Button */}
-              <Button
-                title="View Details & Apply"
-                onPress={() => handleViewJob(job)}
-                style={styles.applyButton}
-              />
+              {/* CHANGED: Simple green text instead of button */}
+              <View style={styles.tapInstruction}>
+                <Text style={styles.tapInstructionText}>Tap card to view details</Text>
+              </View>
             </TouchableOpacity>
           ))
         )}
@@ -423,6 +416,31 @@ const styles = {
     marginBottom: SIZES.margin,
     lineHeight: 20,
   },
+  updateProfileButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: SIZES.radius,
+    marginTop: SIZES.margin,
+  },
+  updateProfileText: {
+    color: COLORS.white,
+    fontSize: SIZES.small,
+    fontWeight: '600',
+  },
+  refreshButton: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: SIZES.radius,
+    marginTop: 8,
+  },
+  refreshText: {
+    color: COLORS.primary,
+    fontSize: SIZES.small,
+    fontWeight: '600',
+  },
   jobCard: {
     backgroundColor: COLORS.white,
     margin: SIZES.margin,
@@ -452,21 +470,10 @@ const styles = {
     marginBottom: 2,
   },
   jobCategory: {
+    // CHANGED: Green color for category
     fontSize: SIZES.small,
     fontWeight: '600',
-    color: COLORS.gray700,
-  },
-  budget: {
-    fontSize: SIZES.large,
-    fontWeight: 'bold',
-    color: COLORS.success,
-    marginLeft: 8,
-  },
-  jobDescription: {
-    fontSize: SIZES.small,
-    color: COLORS.gray800,
-    marginBottom: 8,
-    lineHeight: 18,
+    color: '#16a34a', // Green color
   },
   locationRow: {
     flexDirection: 'row',
@@ -482,7 +489,7 @@ const styles = {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   date: {
     fontSize: SIZES.xSmall,
@@ -494,7 +501,15 @@ const styles = {
     color: COLORS.gray600,
     fontWeight: '500',
   },
-  applyButton: {
-    // Uses default button styling
+  tapInstruction: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  tapInstructionText: {
+    // CHANGED: Green text for tap instruction
+    fontSize: SIZES.xSmall,
+    color: '#16a34a', // Green color
+    fontWeight: '500',
+    fontStyle: 'italic',
   },
 };
