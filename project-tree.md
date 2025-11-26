@@ -15,12 +15,18 @@ CAZZIJOBS/
 │   ├── logo.png
 │   └── splash-icon.png
 ├── docs/
+│   ├── admin-features-schema.txt
+│   ├── API_CallTrackingSystem.txt
+│   ├── CurrentDebuggingSummary.txt
+│   ├── database-schema-complete.txt
 │   ├── phasedApproach.txt
-│   └── projectSummary.txt
+│   ├── projectSummaryNew.txt
+│   └── projectSummaryOld.txt
 ├── src/
 │   ├── components/
-│   │   └── common/
-│   │       └── Button.js
+│   │   ├── common/
+│   │   │   └── Button.js
+│   │   └── JobFilterModal.bk
 │   ├── config/
 │   │   └── supabase.js
 │   ├── contexts/
@@ -39,6 +45,7 @@ CAZZIJOBS/
 │   │   │   ├── TermsScreen.js
 │   │   │   └── WelcomeScreen.js
 │   │   ├── employer/
+│   │   │   ├── EditJobScreen.js
 │   │   │   ├── JobDetailScreen.js
 │   │   │   └── MyJobsScreen.js
 │   │   ├── jobs/
@@ -55,6 +62,8 @@ CAZZIJOBS/
 │   │   │   ├── CompleteProfileScreen.js
 │   │   │   └── HomeScreen.js
 │   │   └── worker/
+│   │       ├── WorkerJobDetailScreen.js
+│   │       └── WorkerJobsScreen.js
 │   ├── styles/
 │   │   └── theme.js
 │   └── utils/
@@ -67,6 +76,7 @@ CAZZIJOBS/
 ├── App.js
 ├── app.json
 ├── babel.config.js
+├── cazzyjobz.zip
 ├── generateTree.js
 ├── index.js
 ├── package-lock.json

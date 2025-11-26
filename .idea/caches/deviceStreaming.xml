@@ -52,18 +52,6 @@
           <option name="screenY" value="2412" />
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
-          <option name="api" value="35" />
-          <option name="brand" value="OnePlus" />
-          <option name="codename" value="OP5552L1" />
-          <option name="id" value="OP5552L1" />
-          <option name="labId" value="google" />
-          <option name="manufacturer" value="OnePlus" />
-          <option name="name" value="CPH2415" />
-          <option name="screenDensity" value="480" />
-          <option name="screenX" value="1080" />
-          <option name="screenY" value="2412" />
-        </PersistentDeviceSelectionData>
-        <PersistentDeviceSelectionData>
           <option name="api" value="34" />
           <option name="brand" value="OPPO" />
           <option name="codename" value="OP573DL1" />
@@ -186,6 +174,18 @@
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="34" />
+          <option name="brand" value="samsung" />
+          <option name="codename" value="a35x" />
+          <option name="id" value="a35x" />
+          <option name="labId" value="google" />
+          <option name="manufacturer" value="Samsung" />
+          <option name="name" value="A35" />
+          <option name="screenDensity" value="450" />
+          <option name="screenX" value="1080" />
+          <option name="screenY" value="2340" />
+        </PersistentDeviceSelectionData>
+        <PersistentDeviceSelectionData>
+          <option name="api" value="35" />
           <option name="brand" value="samsung" />
           <option name="codename" value="a35x" />
           <option name="id" value="a35x" />
@@ -692,6 +692,18 @@
           <option name="screenDensity" value="360" />
           <option name="screenX" value="1008" />
           <option name="screenY" value="2244" />
+        </PersistentDeviceSelectionData>
+        <PersistentDeviceSelectionData>
+          <option name="api" value="35" />
+          <option name="brand" value="motorola" />
+          <option name="codename" value="lamul" />
+          <option name="id" value="lamul" />
+          <option name="labId" value="google" />
+          <option name="manufacturer" value="Motorola" />
+          <option name="name" value="moto g05" />
+          <option name="screenDensity" value="280" />
+          <option name="screenX" value="720" />
+          <option name="screenY" value="1604" />
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="34" />

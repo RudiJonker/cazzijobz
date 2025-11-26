@@ -1,4 +1,4 @@
-// src/screens/worker/WorkerJobDetailScreen.js - UPDATED WITH IMPROVEMENTS
+// src/screens/worker/WorkerJobDetailScreen.js - OPTIMIZED NO UNNECESSARY API CALLS
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,24 +10,38 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabaseClient';
 import { storageService } from '../../utils/storageService';
+import { useSupabase } from '../../hooks/useSupabase';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Button } from '../../components/common/Button';
 
 export default function WorkerJobDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { jobId } = route.params;
-  const [job, setJob] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user } = useSupabase();
+  const { jobId, job: passedJob } = route.params; // GET JOB FROM PARAMS
+  const [job, setJob] = useState(passedJob || null); // USE PASSED JOB FIRST
+  const [loading, setLoading] = useState(!passedJob); // ONLY LOAD IF NO JOB PASSED
   const [applying, setApplying] = useState(false);
+  const [hasApplied, setHasApplied] = useState(false);
+  const [applicationStatus, setApplicationStatus] = useState(null);
 
   useEffect(() => {
     fetchJobDetails();
-  }, [jobId]);
+    checkIfApplied();
+  }, [jobId, user]);
 
   const fetchJobDetails = async () => {
+    // If we already have the job from props, skip API call
+    if (passedJob) {
+      console.log('💾 Using job data passed from list - NO API CALL');
+      setJob(passedJob);
+      setLoading(false);
+      return;
+    }
+
+    // Only make API call if we don't have the job data
     try {
-      console.log('📥 TYPE A CALL - Fetching job details for worker');
+      console.log('📥 TYPE A CALL - Fetching job details (no local data)');
       const { data, error } = await supabase
         .from('jobs')
         .select('*')
@@ -46,28 +60,214 @@ export default function WorkerJobDetailScreen() {
     }
   };
 
-  const handleApply = async () => {
-    if (applying) return;
+  const checkIfApplied = async () => {
+  if (!user) {
+    console.log('🔍 No user available, skipping application check');
+    return;
+  }
+  
+  try {
+    console.log('🔍 Checking if user has already applied to job:', jobId);
     
-    setApplying(true);
-    try {
-      // TODO: Implement application logic
-      console.log('📝 TYPE A CALL - Applying to job:', jobId);
-      
-      // For now, just show a message
-      Alert.alert(
-        'Application Feature',
-        'Job application system will be implemented in the next phase. This will include:\n\n• Application submission\n• Schedule conflict checking\n• Application tracking',
-        [{ text: 'OK' }]
-      );
-      
-    } catch (error) {
-      console.error('❌ Error applying to job:', error);
-      Alert.alert('Error', 'Failed to apply to job');
-    } finally {
-      setApplying(false);
+    const { data, error } = await supabase
+      .from('applications')
+      .select('status, applied_at')
+      .eq('job_id', jobId)
+      .eq('worker_id', user.id)
+      .single();
+
+    // Handle "no rows returned" error gracefully - this is normal
+    if (error && error.code === 'PGRST116') { 
+      console.log('✅ No existing application found - job is available');
+      setHasApplied(false);
+      setApplicationStatus(null);
+      return;
     }
+
+    // Handle other errors
+    if (error) {
+      console.log('⚠️ Non-critical error checking application:', error.message);
+      // Don't throw error - just assume no application to be safe
+      setHasApplied(false);
+      setApplicationStatus(null);
+      return;
+    }
+
+    // Successfully found application
+    if (data) {
+      console.log('✅ User has already applied - status:', data.status, 'applied at:', data.applied_at);
+      setHasApplied(true);
+      setApplicationStatus(data.status);
+    } else {
+      console.log('✅ No application found - job is available');
+      setHasApplied(false);
+      setApplicationStatus(null);
+    }
+
+  } catch (error) {
+    console.log('⚠️ Exception in checkIfApplied (non-critical):', error.message);
+    // Don't break the app - just assume no application
+    setHasApplied(false);
+    setApplicationStatus(null);
+  }
+};
+
+  const handleApply = async () => {
+    console.log('🎯 APPLY BUTTON PRESSED - Starting application process');
+    
+    if (applying) {
+      console.log('⏳ Already in applying state, skipping');
+      return;
+    }
+  
+    // STEP 1: Show confirmation dialog
+    Alert.alert(
+      'Apply for Job',
+      `Are you sure you want to apply for "${job.job_reference} - ${job.category}"?\n\nDate: ${formatDate(job.scheduled_date)}\nTime: ${formatTime(job.time_from)} - ${formatTime(job.time_to)}\nLocation: ${job.location_suburb}`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Apply',
+          onPress: async () => {
+            // User confirmed - proceed with application
+            await submitApplication();
+          },
+        },
+      ]
+    );
   };
+
+  const submitApplication = async () => {
+  setApplying(true);
+  
+  try {
+    console.log('🔍 Step 1: Getting current user');
+    
+    // METHOD 1: Try to get user from hook first
+    let currentUser = user;
+    console.log('👤 User from useSupabase hook:', currentUser);
+    
+    // METHOD 2: If no user from hook, try direct auth
+    if (!currentUser) {
+      console.log('🔄 No user from hook, trying direct auth...');
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('❌ Auth error:', authError);
+        Alert.alert('Auth Error', 'Please log in again.');
+        return;
+      }
+      
+      currentUser = authUser;
+      console.log('👤 User from direct auth:', currentUser);
+    }
+    
+    // METHOD 3: If still no user, show login required
+    if (!currentUser) {
+      console.log('❌ No user found at all');
+      Alert.alert('Login Required', 'Please log in to apply for jobs.');
+      return;
+    }
+    
+    console.log('✅ User confirmed:', currentUser.id);
+    
+    // Check if job data is available
+    if (!job) {
+      console.log('❌ No job data available');
+      Alert.alert('Error', 'Job information not loaded. Please try again.');
+      return;
+    }
+    
+    console.log('📋 Job confirmed:', job.id, job.job_reference);
+    
+    // Check if already applied
+    if (hasApplied) {
+      console.log('ℹ️ User has already applied, status:', applicationStatus);
+      Alert.alert('Already Applied', `You have already applied to this job. Status: ${applicationStatus}`);
+      return;
+    }
+    
+    // Check if job is open
+    if (job.status !== 'open') {
+      console.log('❌ Job not open, status:', job.status);
+      Alert.alert('Job Not Available', 'This job is no longer accepting applications.');
+      return;
+    }
+    
+    console.log('🚀 All checks passed, submitting application...');
+    
+    // Submit application to Supabase
+    const applicationData = {
+      job_id: jobId,
+      worker_id: currentUser.id,
+      status: 'applied',
+      worker_notes: '',
+      applied_at: new Date().toISOString()
+    };
+    
+    console.log('📤 Application data:', applicationData);
+    
+    const { data, error } = await supabase
+      .from('applications')
+      .insert([applicationData])
+      .select()
+      .single();
+
+    // HANDLE ERRORS HERE - DON'T LET THEM REACH THE CATCH BLOCK
+    if (error) {
+      // SILENTLY HANDLE DUPLICATE APPLICATIONS - NO ERROR THROWING
+      if (error.code === '23505') { 
+        console.log('✅ Duplicate application prevented - user already applied');
+        Alert.alert('Already Applied', 'You have already applied to this job.');
+        setHasApplied(true);
+        // Don't call checkIfApplied here since we're in an error state
+        return; // RETURN HERE - DON'T THROW
+      }
+      
+      // For other errors, log and show user-friendly message
+      console.log('⚠️ Non-duplicate application error:', error.message);
+      Alert.alert(
+        'Application Failed', 
+        'Failed to submit your application. Please try again.'
+      );
+      return; // RETURN HERE - DON'T THROW
+    }
+
+    console.log('✅ Application submitted successfully! ID:', data.id);
+    
+    // Update local state
+    setHasApplied(true);
+    setApplicationStatus('applied');
+    
+    console.log('🎉 Application process completed successfully');
+    
+    // Show success message with single OK button
+    Alert.alert(
+      'Application Submitted! 🎉',
+      `You have successfully applied for "${job.job_reference} - ${job.category}".\n\nThe employer will review your profile and contact you if interested.`,
+      [
+        { 
+          text: 'OK', 
+          onPress: () => {
+            console.log('📱 Navigating back to previous screen');
+            navigation.goBack();
+          }
+        }
+      ]
+    );
+
+  } catch (error) {
+    // THIS CATCH BLOCK SHOULD NOW BE EMPTY FOR DUPLICATE APPLICATIONS
+    console.log('⚠️ Unexpected error in application process (non-critical):', error.message);
+    // Don't show alert here since we've handled all expected errors above
+  } finally {
+    console.log('🏁 Application process finished, setting applying to false');
+    setApplying(false);
+  }
+};
 
   const formatDate = (dateString) => {
     try {
@@ -107,6 +307,27 @@ export default function WorkerJobDetailScreen() {
       'expired': 'Expired'
     };
     return statusMap[status] || status;
+  };
+
+  // Helper function to format application status
+  const getApplicationStatusDisplay = (status) => {
+    const statusMap = {
+      'applied': 'Applied',
+      'hired': 'Hired 🎉',
+      'declined': 'Not Selected',
+      'withdrawn': 'Withdrawn'
+    };
+    return statusMap[status] || status;
+  };
+
+  const getApplicationStatusColor = (status) => {
+    const colors = {
+      'applied': '#3b82f6',    // Blue
+      'hired': '#10b981',      // Green
+      'declined': '#ef4444',   // Red
+      'withdrawn': '#6b7280'   // Gray
+    };
+    return colors[status] || '#6b7280';
   };
 
   if (loading) {
@@ -160,6 +381,21 @@ export default function WorkerJobDetailScreen() {
               <Text style={styles.wageAmount}>{job.budget_currency} {job.budget}</Text>
             </View>
 
+            {/* Application Status Banner */}
+            {hasApplied && (
+              <View style={[
+                styles.applicationBanner,
+                { backgroundColor: getApplicationStatusColor(applicationStatus) + '20' }
+              ]}>
+                <Text style={[
+                  styles.applicationStatusText,
+                  { color: getApplicationStatusColor(applicationStatus) }
+                ]}>
+                  Your Status: {getApplicationStatusDisplay(applicationStatus)}
+                </Text>
+              </View>
+            )}
+
             {/* UPDATED: Category styled like other detail rows */}
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Category:</Text>
@@ -202,10 +438,10 @@ export default function WorkerJobDetailScreen() {
                 style={styles.backButton}
               />
               <Button
-                title={applying ? "Applying..." : "Apply"}
+                title={getApplyButtonText()}
                 onPress={handleApply}
                 style={styles.applyButton}
-                disabled={applying || job.status !== 'open'}
+                disabled={getApplyButtonDisabled()}
               />
             </View>
           </View>
@@ -215,9 +451,13 @@ export default function WorkerJobDetailScreen() {
             <Text style={styles.infoTitle}>About this Job</Text>
             <Text style={styles.infoText}>
               • This job is {job.status === 'open' ? 'open for applications' : getStatusDisplay(job.status).toLowerCase()}{'\n'}
-              • You can apply if you're available on the scheduled date{'\n'}
+              {hasApplied 
+                ? `• Your application status: ${getApplicationStatusDisplay(applicationStatus)}\n`
+                : '• You can apply if you\'re available on the scheduled date\n'
+              }
               • The employer will review your profile{'\n'}
-              • You'll be notified if you're hired{'\n'}
+              • You'll be notified if you\'re hired{'\n'}
+              {job.applicant_count > 0 && `• ${job.applicant_count} applicant${job.applicant_count !== 1 ? 's' : ''} so far\n`}
             </Text>
           </View>
         </ScrollView>
@@ -227,6 +467,18 @@ export default function WorkerJobDetailScreen() {
       </View>
     </SafeAreaView>
   );
+
+  // Helper functions for button state
+  function getApplyButtonText() {
+    if (applying) return "Applying...";
+    if (hasApplied) return getApplicationStatusDisplay(applicationStatus);
+    if (job.status !== 'open') return "Job Filled";
+    return "Apply";
+  }
+
+  function getApplyButtonDisabled() {
+    return applying || hasApplied || job.status !== 'open';
+  }
 }
 
 const styles = {
@@ -241,7 +493,7 @@ const styles = {
   // STICKY Ad Banner - UPDATED: Added top margin
   stickyAdBanner: {
     position: 'absolute',
-    top: 15, // CHANGED: Added 15px top margin
+    top: 15,
     left: 0,
     right: 0,
     backgroundColor: COLORS.gray200,
@@ -266,7 +518,7 @@ const styles = {
   // Scrollable content area (stops before footer safe zone)
   scrollView: {
     flex: 1,
-    marginTop: 80, // UPDATED: Increased to accommodate banner with margin
+    marginTop: 80,
   },
   scrollContent: {
     paddingBottom: 10,
@@ -315,11 +567,22 @@ const styles = {
     fontSize: SIZES.small,
     fontWeight: '600',
   },
+  // NEW: Application status banner
+  applicationBanner: {
+    padding: 12,
+    borderRadius: SIZES.radius,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  applicationStatusText: {
+    fontSize: SIZES.small,
+    fontWeight: '600',
+  },
   // UPDATED: Brighter wage color
   wageAmount: {
     fontSize: SIZES.large,
     fontWeight: 'bold',
-    color: '#059669', // CHANGED: Brighter green
+    color: '#059669',
     marginLeft: 8,
   },
   detailRow: {
@@ -340,8 +603,8 @@ const styles = {
   // NEW: Category value with blue bold styling
   categoryValue: {
     fontSize: SIZES.small,
-    color: COLORS.primary, // Blue color
-    fontWeight: 'bold', // Bold font
+    color: COLORS.primary,
+    fontWeight: 'bold',
     flex: 1,
   },
   // UPDATED: Button row layout

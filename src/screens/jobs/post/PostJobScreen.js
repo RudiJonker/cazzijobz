@@ -104,100 +104,131 @@ export default function PostJobScreen() {
   };
 
   const handleFinalSubmit = async () => {
-    if (isSubmitting) return;
+  if (isSubmitting) return;
+  
+  setIsSubmitting(true);
+  
+  try {
+    // Get current user directly from Supabase auth
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
     
-    setIsSubmitting(true);
-    
-    try {
-      // Get current user directly from Supabase auth
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !user) {
-        console.error('❌ User auth error:', userError);
-        Alert.alert('Error', 'You must be logged in to post jobs');
-        return;
-      }
-
-      console.log('👤 User ID:', user.id);
-      console.log('💰 Using currency:', currency);
-
-      const jobData = {
-        employer_id: user.id,
-        description: formData.description,
-        category: formData.category,
-        location_city: formData.location_city,
-        location_suburb: formData.location_suburb,
-        address_text: `${formData.location_suburb}, ${formData.location_city}`,
-        scheduled_date: formData.scheduled_date,
-        time_from: formData.start_time,
-        time_to: formData.end_time,
-        duration_hours: parseFloat(formData.duration_hours) || 0,
-        budget: parseFloat(formData.budget) || 0,
-        budget_currency: currency.code, // CHANGED: Use detected currency instead of hard-coded 'ZAR'
-        status: 'open',
-        applicant_count: 0,
-      };
-
-      console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
-
-      const { data, error } = await supabase
-        .from('jobs')
-        .insert([jobData])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Supabase error:', error);
-        throw error;
-      }
-
-      console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
-console.log('💰 Currency saved:', data.budget_currency);
-
-// FIXED: Save job to employer's local storage
-try {
-  const existingJobs = await storageService.getMyJobs() || [];
-  const updatedJobs = [data, ...existingJobs];
-  await storageService.setMyJobs(updatedJobs);
-  console.log('💾 Job saved to employer local storage');
-} catch (storageError) {
-  console.log('💾 Could not save job to local storage, but Supabase save was successful');
-}
-
-// Reset form
-setFormData({
-  category: '',
-  description: '',
-  location_city: '',
-  location_suburb: '',
-  scheduled_date: '',
-  start_time: '',
-  end_time: '',
-  duration_hours: '',
-  budget: '',
-});
-
-// Reset currency to default
-setCurrency({ symbol: 'R', code: 'ZAR' });
-      
-      setShowConfirmation(false);
-      
-      // Navigate to My Jobs screen
-      navigation.navigate('My Jobs', { 
-        refresh: true,
-        newJobReference: data.job_reference 
-      });
-      
-    } catch (error) {
-      console.error('💥 REAL ERROR:', error);
-      Alert.alert(
-        'Posting Failed', 
-        error.message || 'Could not post your job. Please check your connection and try again.'
-      );
-    } finally {
-      setIsSubmitting(false);
+    if (userError || !user) {
+      console.error('❌ User auth error:', userError);
+      Alert.alert('Error', 'You must be logged in to post jobs');
+      return;
     }
-  };
+
+    console.log('👤 User ID:', user.id);
+    console.log('💰 Using currency:', currency);
+
+    const jobData = {
+      employer_id: user.id,
+      description: formData.description,
+      category: formData.category,
+      location_city: formData.location_city,
+      location_suburb: formData.location_suburb,
+      address_text: `${formData.location_suburb}, ${formData.location_city}`,
+      scheduled_date: formData.scheduled_date,
+      time_from: formData.start_time,
+      time_to: formData.end_time,
+      duration_hours: parseFloat(formData.duration_hours) || 0,
+      budget: parseFloat(formData.budget) || 0,
+      budget_currency: currency.code,
+      status: 'open',
+      applicant_count: 0,
+    };
+
+    console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
+
+    const { data, error } = await supabase
+      .from('jobs')
+      .insert([jobData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      throw error;
+    }
+
+    console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
+    console.log('💰 Currency saved:', data.budget_currency);
+
+    // FIXED: Save job to employer's local storage PROPERLY
+    try {
+      // Get existing employer jobs from storage
+      const existingJobs = await storageService.getMyJobs() || [];
+      console.log('💾 Existing jobs in storage:', existingJobs.length);
+      
+      // Add the new job to the beginning of the array
+      const updatedJobs = [data, ...existingJobs];
+      
+      // Save updated jobs array back to storage
+      await storageService.setMyJobs(updatedJobs);
+      
+      console.log('💾 Job saved to employer local storage - total jobs:', updatedJobs.length);
+    } catch (storageError) {
+      console.log('💾 Storage error (non-critical):', storageError.message);
+      // Don't break the flow - Supabase save was successful
+    }
+
+    // 🔄 NEW: ALSO refresh available jobs cache for workers
+    try {
+      console.log('🔄 Refreshing available jobs cache for workers...');
+      
+      // Fetch fresh available jobs from Supabase
+      const { data: availableJobs, error: availableError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('status', 'open')
+        .order('created_at', { ascending: false });
+
+      if (availableError) {
+        console.log('⚠️ Could not refresh available jobs cache:', availableError.message);
+      } else if (availableJobs) {
+        // Save to available_jobs storage
+        await storageService.setAvailableJobs(availableJobs);
+        console.log('💾 Available jobs cache updated:', availableJobs.length, 'jobs');
+      }
+    } catch (cacheError) {
+      console.log('⚠️ Available jobs cache refresh failed (non-critical):', cacheError.message);
+      // Don't break the job posting flow
+    }
+
+    // Reset form
+    setFormData({
+      category: '',
+      description: '',
+      location_city: '',
+      location_suburb: '',
+      scheduled_date: '',
+      start_time: '',
+      end_time: '',
+      duration_hours: '',
+      budget: '',
+    });
+
+    // Reset currency to default
+    setCurrency({ symbol: 'R', code: 'ZAR' });
+    
+    setShowConfirmation(false);
+    
+    // Navigate to My Jobs screen
+    navigation.navigate('My Jobs', { 
+      refresh: true,
+      newJobReference: data.job_reference 
+    });
+    
+  } catch (error) {
+    console.error('💥 REAL ERROR:', error);
+    Alert.alert(
+      'Posting Failed', 
+      error.message || 'Could not post your job. Please check your connection and try again.'
+    );
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>

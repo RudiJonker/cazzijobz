@@ -102,33 +102,47 @@ const storageService = {
   },
 
    clearUserDataButKeepPendingChanges: async () => {
-    try {
-      // First, save the pending changes temporarily
-      const pendingChanges = await storageService.getPendingChanges();
-      
-      // Clear all user data
-      const keysToRemove = [
-        'user_profile',
-        'is_admin',
-        'my_jobs',
-        'available_jobs',
-        'last_jobs_refresh',
-        'last_api_call'
-      ];
-      
-      await AsyncStorage.multiRemove(keysToRemove);
-      console.log('🧹 User data cleared (keeping pending changes)');
-      
-      // Restore pending changes if they existed
-      if (pendingChanges) {
-        await storageService.setPendingChanges(pendingChanges);
-        console.log('💾 Pending changes restored after logout');
-      }
-      
-    } catch (error) {
-      console.error('Error clearing user data (keep pending):', error);
+  try {
+    const pendingChanges = await storageService.getPendingChanges();
+    
+    // Clear user data BUT KEEP JOBS CACHE
+    const keysToRemove = [
+      'user_profile',
+      'is_admin',
+      // REMOVED: 'my_jobs', 'available_jobs' - keep jobs cache
+      'last_jobs_refresh',
+      'last_api_call'
+    ];
+    
+    await AsyncStorage.multiRemove(keysToRemove);
+    console.log('🧹 User data cleared (keeping jobs cache and pending changes)');
+    
+    if (pendingChanges) {
+      await storageService.setPendingChanges(pendingChanges);
+      console.log('💾 Pending changes restored after logout');
     }
-  },
+    
+  } catch (error) {
+    console.error('Error clearing user data (keep pending):', error);
+  }
+},
+
+clearUserData: async () => {
+  try {
+    const keysToRemove = [
+      'user_profile',
+      'is_admin',
+      // REMOVED: 'my_jobs', 'available_jobs' - keep jobs cache
+      'pending_changes',
+      'last_jobs_refresh'
+    ];
+    
+    await AsyncStorage.multiRemove(keysToRemove);
+    console.log('🧹 User data cleared from local storage (keeping jobs cache)');
+  } catch (error) {
+    console.error('Error clearing user data:', error);
+  }
+},
 
   // ==================== EMPLOYER JOBS ====================
   
@@ -143,14 +157,16 @@ const storageService = {
   },
 
   getMyJobs: async () => {
-    try {
-      const jobs = await AsyncStorage.getItem('my_jobs');
-      return jobs ? JSON.parse(jobs) : [];
-    } catch (error) {
-      console.error('Error loading jobs:', error);
-      return [];
-    }
-  },
+  try {
+    const jobs = await AsyncStorage.getItem('my_jobs');
+    // FIXED: Return null if key doesn't exist, so we can distinguish between "no data" and "empty array"
+    if (jobs === null) return null;
+    return JSON.parse(jobs);
+  } catch (error) {
+    console.error('Error loading jobs:', error);
+    return null;
+  }
+},
 
   // Update single job in local storage
   updateJobInStorage: async (updatedJob) => {
@@ -179,14 +195,16 @@ const storageService = {
   },
 
   getAvailableJobs: async () => {
-    try {
-      const jobs = await AsyncStorage.getItem('available_jobs');
-      return jobs ? JSON.parse(jobs) : null;
-    } catch (error) {
-      console.error('Error loading available jobs:', error);
-      return null;
-    }
-  },
+  try {
+    const jobs = await AsyncStorage.getItem('available_jobs');
+    // FIXED: Return null if key doesn't exist
+    if (jobs === null) return null;
+    return JSON.parse(jobs);
+  } catch (error) {
+    console.error('Error loading available jobs:', error);
+    return null;
+  }
+},
 
   // ==================== REFRESH TIMEOUT MANAGEMENT ====================
   
@@ -308,5 +326,21 @@ const storageService = {
     }
   }
 };
+
+debugStorage: async () => {
+  try {
+    const allStorage = await storageService.getAllStorage();
+    console.log('🔍 STORAGE DEBUG:', {
+      hasAvailableJobs: allStorage.available_jobs !== undefined,
+      availableJobsCount: allStorage.available_jobs?.length || 0,
+      hasMyJobs: allStorage.my_jobs !== undefined, 
+      myJobsCount: allStorage.my_jobs?.length || 0,
+      lastRefresh: allStorage.last_jobs_refresh
+    });
+    return allStorage;
+  } catch (error) {
+    console.error('Storage debug error:', error);
+  }
+}
 
 export { storageService };

@@ -133,39 +133,48 @@ export default function MyJobsScreen() {
     }
   };
 
-  // Initial load - ONLY from local storage, NO API call
-  useEffect(() => {
-    const initializeJobs = async () => {
-      console.log('🚀 MyJobsScreen mounted - loading from local storage only');
-      
-      const storedRefreshTime = await storageService.getLastJobsRefresh();
-      if (storedRefreshTime) {
-        setLastRefreshTime(storedRefreshTime);
-        console.log('⏱️ Loaded previous refresh time:', storedRefreshTime);
-      }
-      
-      const localJobs = await storageService.getMyJobs();
-      if (localJobs && localJobs.length > 0) {
-        console.log('⚡ Immediate local load:', localJobs.length, 'jobs');
-        setJobs(localJobs);
-        
-        const now = new Date();
-        if (storedRefreshTime) {
-          const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
-          if (timeSinceLastRefresh > 5) {
-            setDataStale(true);
-            console.log('📱 Data may be stale - last refresh was', timeSinceLastRefresh.toFixed(0), 'minutes ago');
-          }
-        }
-      } else {
-        console.log('💾 No local jobs found - user needs to post first job');
-      }
-      
-      setLoading(false);
-    };
+  // Initial load - ALWAYS show local data first
+useEffect(() => {
+  const initializeJobs = async () => {
+    console.log('🚀 MyJobsScreen mounted - loading from local storage');
 
-    initializeJobs();
-  }, []);
+    const debugStorage = await storageService.getAllStorage();
+console.log('🔍 ALL STORAGE CONTENTS:', debugStorage);
+    
+    const storedRefreshTime = await storageService.getLastJobsRefresh();
+    if (storedRefreshTime) {
+      setLastRefreshTime(storedRefreshTime);
+      console.log('⏱️ Loaded previous refresh time:', storedRefreshTime);
+    }
+    
+    // ALWAYS load from local storage - check for existence, not just length
+    const localJobs = await storageService.getMyJobs();
+    console.log('💾 Local jobs from storage:', localJobs);
+    
+    // Check if localJobs exists (not null/undefined) - it could be empty array []
+    if (localJobs !== null && localJobs !== undefined) {
+      console.log('💾 Showing cached employer jobs:', localJobs.length, 'jobs');
+      setJobs(localJobs);
+      
+      const now = new Date();
+      if (storedRefreshTime) {
+        const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
+        if (timeSinceLastRefresh > 5) {
+          setDataStale(true);
+          console.log('📱 Showing cached data - last refresh was', timeSinceLastRefresh.toFixed(0), 'minutes ago');
+        }
+      }
+    } else {
+      console.log('💾 No cached employer jobs found in storage - fresh start');
+      // Only set empty array if truly no data in storage
+      setJobs([]);
+    }
+    
+    setLoading(false);
+  };
+
+  initializeJobs();
+}, []);
 
   // Navigation focus - ONLY set stale indicator, NO API calls
   useEffect(() => {
@@ -251,6 +260,9 @@ export default function MyJobsScreen() {
     );
   }
 
+  console.log('🎯 MyJobsScreen render - dataStale:', dataStale, 'jobs count:', jobs.length);
+  
+
   return (
     <View style={styles.container}>
       {/* Clean Header with Refresh Icon */}
@@ -286,18 +298,27 @@ export default function MyJobsScreen() {
           />
         }
       >
-        {jobs.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No jobs posted yet</Text>
-            <Text style={styles.emptyText}>
-              Post your first job to find workers for your tasks.
-            </Text>
-            <Button
-              title="Post Your First Job"
-              onPress={() => navigation.navigate('Post Job')}
-              style={{ marginTop: SIZES.margin }}
-            />
-          </View>
+        {jobs.length === 0 && !loading ? (
+  <View style={styles.emptyState}>
+    <Text style={styles.emptyTitle}>
+      {jobs === null || jobs === undefined ? 'Loading...' : 'No jobs posted yet'}
+    </Text>
+    <Text style={styles.emptyText}>
+      {jobs === null || jobs === undefined 
+        ? 'Loading your jobs...'
+        : 'Post your first job to find workers for your tasks.'
+      }
+    </Text>
+    
+    {/* Only show the button when we're sure there are no jobs */}
+    {(jobs !== null && jobs !== undefined && jobs.length === 0) && (
+      <Button
+        title="Post Your First Job"
+        onPress={() => navigation.navigate('Post Job')}
+        style={{ marginTop: SIZES.margin }}
+      />
+    )}
+  </View>
         ) : (
           jobs.map((job) => (
             <View
