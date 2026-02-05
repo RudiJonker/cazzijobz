@@ -140,6 +140,115 @@ export default function WorkerJobDetailScreen() {
     );
   };
 
+  // NEW: Check for schedule conflicts with 30-minute grace period
+  const checkScheduleConflict = async (workerId, newJob) => {
+    try {
+      console.log('🔍 Checking schedule conflicts for worker:', workerId, 'on date:', newJob.scheduled_date);
+      
+      // Query applications with active status on the same date
+      const { data: applications, error } = await supabase
+        .from('applications')
+        .select(`
+          job_id,
+          status,
+          jobs (
+            id,
+            job_reference,
+            scheduled_date,
+            time_from,
+            time_to,
+            duration_hours
+          )
+        `)
+        .eq('worker_id', workerId)
+        .in('status', ['applied', 'hired'])
+        .eq('jobs.scheduled_date', newJob.scheduled_date);
+
+      if (error) {
+        console.error('❌ Error checking conflicts:', error);
+        Alert.alert('Error', 'Failed to check schedule conflicts. Please try again.');
+        return true; // Block application on error
+      }
+
+      if (!applications || applications.length === 0) {
+        console.log('✅ No active applications on this date');
+        return false; // No conflicts
+      }
+
+      console.log('📅 Found', applications.length, 'active applications on this date');
+      
+      // Check each application for time conflicts
+      for (const application of applications) {
+        const existingJob = application.jobs;
+        if (!existingJob) continue;
+        
+        console.log('🔍 Checking conflict with job:', existingJob.job_reference);
+        
+        const conflict = checkTimeOverlap(
+          existingJob.time_from,
+          existingJob.time_to,
+          newJob.time_from,
+          newJob.time_to
+        );
+        
+        if (conflict) {
+          console.log('❌ Schedule conflict detected!');
+          Alert.alert(
+            'Schedule Conflict',
+            `You have another job scheduled at the same time:\n\n"${existingJob.job_reference}"\n${formatTime(existingJob.time_from)} - ${formatTime(existingJob.time_to)}\n\nPlease choose a different time or contact the employer.`,
+            [{ text: 'OK' }]
+          );
+          return true; // Conflict found
+        }
+      }
+      
+      console.log('✅ No schedule conflicts found');
+      return false; // No conflicts
+      
+    } catch (error) {
+      console.error('❌ Exception in checkScheduleConflict:', error);
+      Alert.alert('Error', 'Failed to check schedule. Please try again.');
+      return true; // Block on error
+    }
+  };
+
+  // Helper function to check time overlap with 30-minute grace period
+  const checkTimeOverlap = (existingStart, existingEnd, newStart, newEnd) => {
+    try {
+      // Convert times to minutes since midnight
+      const toMinutes = (timeStr) => {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        return hours * 60 + minutes;
+      };
+      
+      const existingStartMin = toMinutes(existingStart);
+      const existingEndMin = toMinutes(existingEnd);
+      const newStartMin = toMinutes(newStart);
+      const newEndMin = toMinutes(newEnd);
+      
+      // Add 30-minute grace period (extend existing job by 30 min before and after)
+      const gracePeriod = 30;
+      const effectiveExistingStart = existingStartMin - gracePeriod;
+      const effectiveExistingEnd = existingEndMin + gracePeriod;
+      
+      console.log('⏰ Time check:', {
+        existing: `${existingStart}-${existingEnd} (${existingStartMin}-${existingEndMin})`,
+        effective: `${effectiveExistingStart}-${effectiveExistingEnd}`,
+        new: `${newStart}-${newEnd} (${newStartMin}-${newEndMin})`
+      });
+      
+      // Check for overlap: new job starts before existing ends AND new job ends after existing starts
+      const overlaps = newStartMin < effectiveExistingEnd && newEndMin > effectiveExistingStart;
+      
+      console.log('⏰ Overlap result:', overlaps);
+      return overlaps;
+      
+    } catch (error) {
+      console.error('❌ Error in time overlap check:', error);
+      return true; // Assume conflict on error
+    }
+  };
+
   const submitApplication = async () => {
   setApplying(true);
   
@@ -195,6 +304,13 @@ export default function WorkerJobDetailScreen() {
       console.log('❌ Job not open, status:', job.status);
       Alert.alert('Job Not Available', 'This job is no longer accepting applications.');
       return;
+    }
+    
+    // NEW: Check for schedule conflicts
+    const hasConflict = await checkScheduleConflict(currentUser.id, job);
+    if (hasConflict) {
+      console.log('❌ Schedule conflict detected - blocking application');
+      return; // Alert shown in checkScheduleConflict
     }
     
     console.log('🚀 All checks passed, submitting application...');

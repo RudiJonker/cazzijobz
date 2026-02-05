@@ -43,6 +43,7 @@
   },
   "private": true,
   "devDependencies": {
-    "babel-plugin-transform-inline-environment-variables": "^0.4.4"
+    "babel-plugin-transform-inline-environment-variables": "^0.4.4",
+    "baseline-browser-mapping": "^2.9.19"
   }
 }

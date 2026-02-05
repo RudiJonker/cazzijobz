@@ -205,13 +205,7 @@ console.log('🔍 ALL STORAGE CONTENTS:', debugStorage);
 
   // Navigate to applicants list (via View Applicants button)
   const handleViewApplicants = (job) => {
-    // TODO: Navigate to Applicants screen when implemented
-    Alert.alert(
-      'Applicants Feature',
-      'Applicants list will be implemented after the application system is complete.',
-      [{ text: 'OK' }]
-    );
-    // Future: navigation.navigate('Applicants', { jobId: job.id });
+    navigation.navigate('ApplicantsList', { jobId: job.id });
   };
 
   const formatDate = (dateString) => {

@@ -4,6 +4,7 @@ CAZZIJOBS/
 │   │   └── deviceStreaming.xml
 │   ├── .gitignore
 │   ├── cazzijobz.iml
+│   ├── deviceManager.xml
 │   ├── misc.xml
 │   ├── modules.xml
 │   ├── vcs.xml
@@ -82,4 +83,5 @@ CAZZIJOBS/
 ├── package-lock.json
 ├── package.json
 ├── project-tree.md
-└── ScreenLayouts.png
+├── ScreenLayouts.png
+

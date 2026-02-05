@@ -32,23 +32,106 @@ export default function HomeScreen({ navigation }) {
   };
 
   const loadWorkerStats = async (profile) => {
-    // TODO: Implement worker stats
-    setStats({
-      pendingApplications: 0,
-      upcomingJobs: 0,
-      totalEarnings: 0,
-      newJobsAvailable: 12 // Example
-    });
+    try {
+      const userId = profile.id;
+
+      // Get application counts
+      const { data: applications, error: appsError } = await supabase
+        .from('applications')
+        .select('status, jobs(scheduled_date)')
+        .eq('worker_id', userId);
+
+      if (appsError) throw appsError;
+
+      // Count applications by status
+      const appStats = applications?.reduce((acc, app) => {
+        acc[app.status] = (acc[app.status] || 0) + 1;
+        return acc;
+      }, {}) || {};
+
+      // Count upcoming jobs (hired applications in the future)
+      const now = new Date();
+      const upcomingJobs = applications?.filter(app =>
+        app.status === 'hired' &&
+        app.jobs &&
+        new Date(app.jobs.scheduled_date) > now
+      ).length || 0;
+
+      // Get available jobs count (rough estimate)
+      const { count: availableJobsCount, error: jobsError } = await supabase
+        .from('jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'open')
+        .ilike('location_city', `%${profile.location_city || ''}%`);
+
+      setStats({
+        pendingApplications: appStats.applied || 0,
+        upcomingJobs: upcomingJobs,
+        totalEarnings: 0, // TODO: Implement when payment system is added
+        newJobsAvailable: availableJobsCount || 0
+      });
+
+    } catch (error) {
+      console.error('Error loading worker stats:', error);
+      // Fallback to zeros
+      setStats({
+        pendingApplications: 0,
+        upcomingJobs: 0,
+        totalEarnings: 0,
+        newJobsAvailable: 0
+      });
+    }
   };
 
   const loadEmployerStats = async (profile) => {
-    // TODO: Implement employer stats  
-    setStats({
-      openJobs: 0,
-      pendingApplications: 0,
-      activeJobs: 0,
-      totalHires: 0
-    });
+    try {
+      const userId = profile.id;
+
+      // Get job counts by status
+      const { data: jobs, error: jobsError } = await supabase
+        .from('jobs')
+        .select('status')
+        .eq('employer_id', userId);
+
+      if (jobsError) throw jobsError;
+
+      // Count jobs by status
+      const jobStats = jobs?.reduce((acc, job) => {
+        acc[job.status] = (acc[job.status] || 0) + 1;
+        return acc;
+      }, {}) || {};
+
+      // Get application counts
+      const { data: applications, error: appsError } = await supabase
+        .from('applications')
+        .select('status, jobs(status)')
+        .eq('jobs.employer_id', userId);
+
+      if (appsError) throw appsError;
+
+      // Count applications by status
+      const appStats = applications?.reduce((acc, app) => {
+        acc[app.status] = (acc[app.status] || 0) + 1;
+        return acc;
+      }, {}) || {};
+
+      setStats({
+        openJobs: jobStats.open || 0,
+        pendingApplications: appStats.applied || 0,
+        activeJobs: jobStats.active || 0,
+        totalHires: appStats.hired || 0
+      });
+
+    } catch (error) {
+      console.error('Error loading employer stats:', error);
+      // Fallback to zeros
+      setStats({
+        openJobs: 0,
+        pendingApplications: 0,
+        activeJobs: 0,
+        totalHires: 0
+      });
+    }
   };
 
   const onRefresh = () => {
@@ -140,7 +223,7 @@ export default function HomeScreen({ navigation }) {
               title="Pending Applications" 
               value={stats.pendingApplications || 0}
               color={COLORS.warning}
-              onPress={() => navigation.navigate('Applicants')}
+              onPress={() => navigation.navigate('My Jobs')}
             />
             <StatCard 
               title="Active Jobs" 
