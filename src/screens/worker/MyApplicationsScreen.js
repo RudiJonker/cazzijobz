@@ -332,14 +332,7 @@ export default function MyApplicationsScreen() {
     try {
       const job = selectedApplication.jobs;
       
-      // Final conflict check (just in case)
-      const hasConflict = await checkScheduleConflict(selectedApplication);
-      if (hasConflict) {
-        setProcessingAction(null);
-        setShowConfirmModal(false);
-        return;
-      }
-
+      
       // Update application with worker confirmation
       const { error: updateError } = await supabase
         .from('applications')

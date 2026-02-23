@@ -15,6 +15,7 @@ import { useSupabase } from '../../hooks/useSupabase';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Button } from '../../components/common/Button';
+import { jobService } from '../../utils/supabaseService';
 
 export default function MyJobsScreen() {
   const navigation = useNavigation();
@@ -25,6 +26,8 @@ export default function MyJobsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [dataStale, setDataStale] = useState(false);
+
+  
 
   // Check if API call is allowed (spam prevention)
   const isRefreshAllowed = async () => {
@@ -144,12 +147,18 @@ useEffect(() => {
       currentUser = authUser;
     }
 
+// Silently expire any lapsed jobs
+  await jobService.expireLapsedJobs(currentUser?.id);
+
     const storedRefreshTime = await storageService.getLastJobsRefresh();
     if (storedRefreshTime) {
       setLastRefreshTime(storedRefreshTime);
     }
 
     const localJobs = await storageService.getMyJobs();
+
+    // Expire any lapsed jobs silently
+await jobService.expireLapsedJobs(currentUser?.id);
     
     // Filter cached jobs to only show current employer's jobs
     const myJobs = localJobs?.filter(j => j.employer_id === currentUser?.id) || [];
@@ -360,7 +369,7 @@ useEffect(() => {
                   onPress={() => handleViewApplicants(job)}
                   variant="outline"
                   style={styles.applicantsButton}
-                  disabled={job.status !== 'open'}
+                  disabled={!['open', 'hired', 'active'].includes(job.status)}
                 />
               </View>
             </View>

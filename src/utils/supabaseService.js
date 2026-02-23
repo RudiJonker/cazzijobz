@@ -81,59 +81,54 @@ export const authService = {
       .single();
   },
 
-  // ✅ NEW: Profile Picture Upload Function
+  // Profile Picture Upload Function
   uploadProfileImage: async (imageUri, fileName, userId = null) => {
-  await trackApiCall('TYPE_A', 'UPLOAD_PROFILE_IMAGE', userId);
-  
-  try {
-    // Use the new FileSystem API
-    const fileInfo = await FileSystem.getInfoAsync(imageUri);
-    if (!fileInfo.exists) {
-      throw new Error('File does not exist');
-    }
+    await trackApiCall('TYPE_A', 'UPLOAD_PROFILE_IMAGE', userId);
+    
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
+      if (!fileInfo.exists) {
+        throw new Error('File does not exist');
+      }
 
-    // Read file as base64 using the new API
-    const fileContent = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    // Determine file type
-    const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
-    const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
-
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from('profile-pictures')
-      .upload(fileName, decodeBase64(fileContent), {
-        contentType: contentType,
-        upsert: true
+      const fileContent = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
-    if (error) throw error;
+      const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('profile-pictures')
-      .getPublicUrl(fileName);
+      const { data, error } = await supabase.storage
+        .from('profile-pictures')
+        .upload(fileName, decodeBase64(fileContent), {
+          contentType: contentType,
+          upsert: true
+        });
 
-    return {
-      data: {
-        publicUrl: urlData.publicUrl,
-        fileName: fileName
-      },
-      error: null
-    };
+      if (error) throw error;
 
-  } catch (error) {
-    console.error('Profile image upload error:', error);
-    return {
-      data: null,
-      error: error
-    };
-  }
-},
+      const { data: urlData } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(fileName);
 
-  // ✅ NEW: Delete Profile Picture
+      return {
+        data: {
+          publicUrl: urlData.publicUrl,
+          fileName: fileName
+        },
+        error: null
+      };
+
+    } catch (error) {
+      console.error('Profile image upload error:', error);
+      return {
+        data: null,
+        error: error
+      };
+    }
+  },
+
+  // Delete Profile Picture
   deleteProfileImage: async (fileName, userId = null) => {
     await trackApiCall('TYPE_A', 'DELETE_PROFILE_IMAGE', userId);
     
@@ -156,24 +151,20 @@ export const adminService = {
   getStats: async (userId) => {
     await trackApiCall('TYPE_A', 'ADMIN_GET_STATS', userId);
     
-    // Get total users
     const { count: totalUsers, error: usersError } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true });
     
-    // Get workers count
     const { count: totalWorkers, error: workersError } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .eq('role', 'worker');
     
-    // Get employers count  
     const { count: totalEmployers, error: employersError } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .eq('role', 'employer');
     
-    // Get total API calls
     const { count: totalApiCalls, error: apiError } = await supabase
       .from('api_usage')
       .select('*', { count: 'exact', head: true });
@@ -191,18 +182,15 @@ export const adminService = {
   }
 };
 
-// Add to src/utils/supabaseService.js
 export const jobService = {
   generateJobReference: async () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const nums = '0123456789';
     
     let reference = '';
-    // First 2 letters
     for (let i = 0; i < 2; i++) {
       reference += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    // Then 5 numbers
     for (let i = 0; i < 5; i++) {
       reference += nums.charAt(Math.floor(Math.random() * nums.length));
     }
@@ -214,13 +202,11 @@ export const jobService = {
     await trackApiCall('TYPE_A', 'CREATE_JOB', userId);
     
     try {
-      // Generate human-readable reference
       const jobReference = await jobService.generateJobReference();
       
       const jobPayload = {
         ...jobData,
         job_reference: jobReference,
-        // Remove title if it exists
         title: undefined
       };
       
@@ -239,10 +225,27 @@ export const jobService = {
       console.error('❌ Job creation error:', error);
       return { data: null, error };
     }
+  },
+
+  // ✅ NEW: Expire lapsed jobs
+  expireLapsedJobs: async (userId = null) => {
+    await trackApiCall('TYPE_A', 'EXPIRE_LAPSED_JOBS', userId);
+    
+    try {
+      const { error } = await supabase.rpc('expire_lapsed_jobs');
+      
+      if (error) throw error;
+      
+      console.log('✅ Lapsed jobs cleanup completed');
+      return { error: null };
+      
+    } catch (error) {
+      console.error('❌ Error expiring lapsed jobs:', error);
+      return { error };
+    }
   }
 };
 
-// ✅ NEW: Application Service
 export const applicationService = {
   getWorkerStats: async (workerId) => {
     try {
@@ -253,13 +256,11 @@ export const applicationService = {
 
       if (error) throw error;
 
-      // Count applications by status
       const stats = applications?.reduce((acc, app) => {
         acc[app.status] = (acc[app.status] || 0) + 1;
         return acc;
       }, {}) || {};
 
-      // Count upcoming confirmed jobs
       const now = new Date();
       const upcomingJobs = applications?.filter(app =>
         app.status === 'hired' &&
@@ -287,7 +288,7 @@ export const applicationService = {
   }
 };
 
-// ✅ NEW: Helper function to decode base64 to Uint8Array
+// Helper function to decode base64 to Uint8Array
 const decodeBase64 = (base64) => {
   try {
     const binaryString = atob(base64);
