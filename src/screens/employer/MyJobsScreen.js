@@ -133,63 +133,63 @@ export default function MyJobsScreen() {
     }
   };
 
-  // Initial load - ALWAYS show local data first
+ // Initial load - ALWAYS show local data first
 useEffect(() => {
   const initializeJobs = async () => {
     console.log('🚀 MyJobsScreen mounted - loading from local storage');
 
-    const debugStorage = await storageService.getAllStorage();
-console.log('🔍 ALL STORAGE CONTENTS:', debugStorage);
-    
+    let currentUser = user;
+    if (!currentUser) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      currentUser = authUser;
+    }
+
     const storedRefreshTime = await storageService.getLastJobsRefresh();
     if (storedRefreshTime) {
       setLastRefreshTime(storedRefreshTime);
-      console.log('⏱️ Loaded previous refresh time:', storedRefreshTime);
     }
-    
-    // ALWAYS load from local storage - check for existence, not just length
+
     const localJobs = await storageService.getMyJobs();
-    console.log('💾 Local jobs from storage:', localJobs);
     
-    // Check if localJobs exists (not null/undefined) - it could be empty array []
-    if (localJobs !== null && localJobs !== undefined) {
-      console.log('💾 Showing cached employer jobs:', localJobs.length, 'jobs');
-      setJobs(localJobs);
-      
+    // Filter cached jobs to only show current employer's jobs
+    const myJobs = localJobs?.filter(j => j.employer_id === currentUser?.id) || [];
+    
+    if (myJobs.length > 0) {
+      console.log('💾 Showing cached employer jobs:', myJobs.length);
+      setJobs(myJobs);
+
       const now = new Date();
       if (storedRefreshTime) {
         const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
         if (timeSinceLastRefresh > 5) {
           setDataStale(true);
-          console.log('📱 Showing cached data - last refresh was', timeSinceLastRefresh.toFixed(0), 'minutes ago');
         }
       }
     } else {
-      console.log('💾 No cached employer jobs found in storage - fresh start');
-      // Only set empty array if truly no data in storage
       setJobs([]);
+      setDataStale(true);
     }
-    
+
     setLoading(false);
   };
 
   initializeJobs();
 }, []);
 
-  // Navigation focus - ONLY set stale indicator, NO API calls
-  useEffect(() => {
-    if (isFocused) {
-      console.log('🎯 MyJobsScreen focused - NO API calls');
-      
-      const now = new Date();
-      const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
-      
-      if (isStale) {
-        setDataStale(true);
-        console.log('📱 Data may be stale - showing refresh indicator');
-      }
+// Navigation focus - ONLY set stale indicator, NO API calls
+useEffect(() => {
+  if (isFocused) {
+    console.log('🎯 MyJobsScreen focused - NO API calls');
+    
+    const now = new Date();
+    const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
+    
+    if (isStale) {
+      setDataStale(true);
+      console.log('📱 Data may be stale - showing refresh indicator');
     }
-  }, [isFocused, lastRefreshTime]);
+  }
+}, [isFocused, lastRefreshTime]);
 
   // Pull to refresh - ONLY manual API calls allowed
   const onRefresh = () => {

@@ -130,7 +130,7 @@ export default function MyApplicationsScreen() {
         } else if (job) {
           console.log(`✅ Job ${app.job_id} found:`, {
             job_reference: job.job_reference,
-            employer: job.employer?.full_name || 'No employer data'
+            employer: job.employer_name || 'No employer data'
           });
           result.push({
             ...app,
@@ -232,71 +232,78 @@ export default function MyApplicationsScreen() {
 
   // Check for schedule conflicts before accepting hire
   const checkScheduleConflict = async (application) => {
-    try {
-      const job = application.jobs;
-      if (!job) return false;
-      
-      console.log('🔍 Checking schedule conflicts for:', job.job_reference);
-      
-      // Get all CONFIRMED applications for this worker
-      const { data: confirmedApps, error } = await supabase
-        .from('applications')
-        .select(`
-          jobs!inner (
-            scheduled_date,
-            time_from,
-            time_to,
-            job_reference
-          )
-        `)
-        .eq('worker_id', currentUser.id)
-        .eq('worker_confirmed', true)
-        .eq('jobs.scheduled_date', job.scheduled_date);
-      
-      if (error) {
-        console.error('Error checking conflicts:', error);
-        return false;
-      }
-      
-      if (!confirmedApps || confirmedApps.length === 0) {
-        console.log('✅ No confirmed jobs on this date');
-        return false;
-      }
-      
-      // Check each confirmed job for time overlap
-      for (const app of confirmedApps) {
-        const existingJob = app.jobs;
-        const conflict = checkTimeOverlap(
-          existingJob.time_from,
-          existingJob.time_to,
-          job.time_from,
-          job.time_to
-        );
-        
-        if (conflict) {
-          console.log('❌ Conflict with job:', existingJob.job_reference);
-          
-          Alert.alert(
-            'Schedule Conflict ⚠️',
-            `You already have a confirmed job at this time:\n\n` +
-            `"${existingJob.job_reference}"\n` +
-            `${formatTime(existingJob.time_from)} - ${formatTime(existingJob.time_to)}\n\n` +
-            `Please decline one of the jobs before accepting another.`,
-            [{ text: 'OK' }]
-          );
-          
-          return true; // Conflict found
-        }
-      }
-      
-      console.log('✅ No schedule conflicts found');
-      return false;
-      
-    } catch (error) {
-      console.error('Error in schedule conflict check:', error);
+  try {
+    const job = application.jobs;
+    if (!job) return false;
+    
+    console.log('🔍 Checking schedule conflicts for:', job.job_reference);
+    
+    // Get all CONFIRMED applications for this worker
+    const { data: confirmedApps, error } = await supabase
+      .from('applications')
+      .select(`
+        id,
+        jobs:worker_application_jobs (
+          id,
+          scheduled_date,
+          time_from,
+          time_to,
+          job_reference
+        )
+      `)
+      .eq('worker_id', currentUser.id)
+      .eq('worker_confirmed', true)
+      .neq('id', application.id);
+    
+    if (error) {
+      console.error('Error checking conflicts:', error);
       return false;
     }
-  };
+    
+    // Filter by same date in JavaScript
+    const sameDateApps = confirmedApps?.filter(
+      a => a.jobs?.scheduled_date === job.scheduled_date
+    ) || [];
+
+    if (sameDateApps.length === 0) {
+      console.log('✅ No confirmed jobs on this date');
+      return false;
+    }
+    
+    // Check each confirmed job for time overlap
+    for (const app of sameDateApps) {
+      const existingJob = app.jobs;
+      const conflict = checkTimeOverlap(
+        existingJob.time_from,
+        existingJob.time_to,
+        job.time_from,
+        job.time_to
+      );
+      
+      if (conflict) {
+        console.log('❌ Conflict with job:', existingJob.job_reference);
+        
+        Alert.alert(
+          'Schedule Conflict ⚠️',
+          `You already have a confirmed job at this time:\n\n` +
+          `"${existingJob.job_reference}"\n` +
+          `${formatTime(existingJob.time_from)} - ${formatTime(existingJob.time_to)}\n\n` +
+          `Please decline one of the jobs before accepting another.`,
+          [{ text: 'OK' }]
+        );
+        
+        return true;
+      }
+    }
+    
+    console.log('✅ No schedule conflicts found');
+    return false;
+    
+  } catch (error) {
+    console.error('Error in schedule conflict check:', error);
+    return false;
+  }
+};
 
   const checkTimeOverlap = (existingStart, existingEnd, newStart, newEnd) => {
     const toMinutes = (timeStr) => {
