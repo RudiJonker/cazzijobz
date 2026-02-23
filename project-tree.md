@@ -46,6 +46,7 @@ CAZZIJOBS/
 │   │   │   ├── TermsScreen.js
 │   │   │   └── WelcomeScreen.js
 │   │   ├── employer/
+│   │   │   ├── ApplicantsListScreen.js
 │   │   │   ├── EditJobScreen.js
 │   │   │   ├── JobDetailScreen.js
 │   │   │   └── MyJobsScreen.js
@@ -63,11 +64,13 @@ CAZZIJOBS/
 │   │   │   ├── CompleteProfileScreen.js
 │   │   │   └── HomeScreen.js
 │   │   └── worker/
+│   │       ├── MyApplicationsScreen.js
 │   │       ├── WorkerJobDetailScreen.js
 │   │       └── WorkerJobsScreen.js
 │   ├── styles/
 │   │   └── theme.js
 │   └── utils/
+│       ├── applicationService.js
 │       ├── debounce.js
 │       ├── storageService.js
 │       ├── supabaseClient.js
@@ -83,5 +86,4 @@ CAZZIJOBS/
 ├── package-lock.json
 ├── package.json
 ├── project-tree.md
-├── ScreenLayouts.png
-
+└── ScreenLayouts.png

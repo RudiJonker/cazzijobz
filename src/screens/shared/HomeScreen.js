@@ -196,7 +196,7 @@ export default function HomeScreen({ navigation }) {
               title="Upcoming Jobs" 
               value={stats.upcomingJobs || 0} 
               color={COLORS.success}
-              onPress={() => navigation.navigate('My Schedule')}
+              onPress={() => navigation.navigate('My Applications')}
             />
             <StatCard 
               title="New Jobs Available" 

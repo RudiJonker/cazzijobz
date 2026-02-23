@@ -8,6 +8,7 @@ import AdminScreen from '../screens/shared/AdminScreen';
 import PostJobScreen from '../screens/jobs/post/PostJobScreen';
 import MyJobsScreen from '../screens/employer/MyJobsScreen';
 import { storageService } from '../utils/storageService';
+import MyApplicationsScreen from '../screens/worker/MyApplicationsScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -43,52 +44,59 @@ export default function MainNavigator() {
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused }) => {
-          const icons = {
-            'Dashboard': '🏠',
-            'Find Jobs': '🔍',
-            'My Jobs': '📋',
-            'Post Job': '📝',
-            'Profile': '👤',
-            'Admin': '⚙️'
-          };
-          return <Text style={{ fontSize: 20 }}>{icons[route.name]}</Text>;
-        },
-        tabBarActiveTintColor: '#2563eb',
-        tabBarInactiveTintColor: '#64748b',
-        headerShown: false,
-      })}
-    >
-      {/* COMMON: Dashboard for both roles */}
+  screenOptions={({ route }) => ({
+    tabBarIcon: ({ focused }) => {
+      const icons = {
+        'Dashboard': '🏠',
+        'Find Jobs': '🔍',
+        'My Applications': '📋',  // NEW
+        'My Jobs': '📋',
+        'Post Job': '📝',
+        'Profile': '👤',
+        'Admin': '⚙️'
+      };
+      return <Text style={{ fontSize: 20 }}>{icons[route.name]}</Text>;
+    },
+    tabBarActiveTintColor: '#2563eb',
+    tabBarInactiveTintColor: '#64748b',
+    headerShown: false,
+  })}
+>
+  {/* COMMON: Dashboard for both roles */}
+  <Tab.Screen 
+    name="Dashboard" 
+    component={HomeScreen}
+  />
+
+  {/* WORKER: Job browsing and applications */}
+  {userRole === 'worker' && (
+    <>
       <Tab.Screen 
-        name="Dashboard" 
-        component={HomeScreen}
+        name="Find Jobs" 
+        component={WorkerJobsScreen} 
       />
+      <Tab.Screen 
+        name="My Applications" 
+        component={MyApplicationsScreen} 
+      />
+    </>
+  )}
 
-      {/* WORKER: Job browsing */}
-      {userRole === 'worker' && (
-        <Tab.Screen 
-          name="Find Jobs" 
-          component={WorkerJobsScreen} 
-        />
-      )}
+  {/* EMPLOYER: Job management */}
+  {userRole === 'employer' && (
+    <>
+      <Tab.Screen name="Post Job" component={PostJobScreen} />
+      <Tab.Screen name="My Jobs" component={MyJobsScreen} />
+    </>
+  )}
 
-      {/* EMPLOYER: Job management */}
-      {userRole === 'employer' && (
-        <>
-          <Tab.Screen name="Post Job" component={PostJobScreen} />
-          <Tab.Screen name="My Jobs" component={MyJobsScreen} />
-        </>
-      )}
+  {/* COMMON: Profile */}
+  <Tab.Screen name="Profile" component={ProfileScreen} />
 
-      {/* COMMON: Profile */}
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-
-      {/* ADMIN: Admin panel */}
-      {isAdmin && (
-        <Tab.Screen name="Admin" component={AdminScreen} />
-      )}
-    </Tab.Navigator>
+  {/* ADMIN: Admin panel */}
+  {isAdmin && (
+    <Tab.Screen name="Admin" component={AdminScreen} />
+  )}
+</Tab.Navigator>
   );
 }

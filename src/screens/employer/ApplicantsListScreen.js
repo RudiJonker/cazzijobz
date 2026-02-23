@@ -59,6 +59,7 @@ export default function ApplicantsListScreen() {
             id,
             worker_id,
             status,
+            worker_confirmed,
             applied_at,
             worker_notes,
             employer_notes,
@@ -262,14 +263,26 @@ export default function ApplicantsListScreen() {
     }
   };
 
-  const getApplicationStatusColor = (status) => {
+  // UPDATED: Added worker_confirmed parameter
+  const getApplicationStatusColor = (status, workerConfirmed = false) => {
     const colors = {
       'applied': '#3b82f6',    // Blue
-      'hired': '#10b981',      // Green
+      'hired': workerConfirmed ? '#10b981' : '#f59e0b', // Green if confirmed, Amber if pending
       'declined': '#ef4444',   // Red
       'withdrawn': '#6b7280'   // Gray
     };
     return colors[status] || '#6b7280';
+  };
+
+  // NEW: Added helper function for status display
+  const getApplicationStatusDisplay = (status, workerConfirmed = false) => {
+    const statusMap = {
+      'applied': 'Applied',
+      'hired': workerConfirmed ? 'Confirmed 🎉' : 'Pending Confirmation',
+      'declined': 'Declined',
+      'withdrawn': 'Withdrawn'
+    };
+    return statusMap[status] || status;
   };
 
   if (loading) {
@@ -353,15 +366,16 @@ export default function ApplicantsListScreen() {
                         : application.profiles?.location_city || 'Location not specified'}
                     </Text>
                   </View>
+                  {/* UPDATED: Status badge with worker_confirmed parameter */}
                   <View style={[
                     styles.statusBadge,
-                    { backgroundColor: getApplicationStatusColor(application.status) + '20' }
+                    { backgroundColor: getApplicationStatusColor(application.status, application.worker_confirmed) + '20' }
                   ]}>
                     <Text style={[
                       styles.statusText,
-                      { color: getApplicationStatusColor(application.status) }
+                      { color: getApplicationStatusColor(application.status, application.worker_confirmed) }
                     ]}>
-                      {application.status}
+                      {getApplicationStatusDisplay(application.status, application.worker_confirmed)}
                     </Text>
                   </View>
                 </View>
@@ -402,10 +416,35 @@ export default function ApplicantsListScreen() {
                   </View>
                 )}
 
-                {application.status !== 'applied' && (
+                {/* UPDATED: Conditional rendering for hired applications */}
+                {application.status === 'hired' && !application.worker_confirmed && (
                   <View style={styles.statusMessage}>
                     <Text style={styles.statusMessageText}>
-                      {application.status === 'hired' ? '✅ Hired' : '❌ Declined'}
+                      ⏳ Waiting for worker confirmation...
+                    </Text>
+                  </View>
+                )}
+
+                {application.status === 'hired' && application.worker_confirmed && (
+                  <View style={styles.statusMessage}>
+                    <Text style={styles.statusMessageText}>
+                      ✅ Worker confirmed! Job is active.
+                    </Text>
+                  </View>
+                )}
+
+                {application.status === 'declined' && (
+                  <View style={styles.statusMessage}>
+                    <Text style={styles.statusMessageText}>
+                      ❌ Application declined
+                    </Text>
+                  </View>
+                )}
+
+                {application.status === 'withdrawn' && (
+                  <View style={styles.statusMessage}>
+                    <Text style={styles.statusMessageText}>
+                      ↩️ Application withdrawn
                     </Text>
                   </View>
                 )}

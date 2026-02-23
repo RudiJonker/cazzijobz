@@ -242,6 +242,51 @@ export const jobService = {
   }
 };
 
+// ✅ NEW: Application Service
+export const applicationService = {
+  getWorkerStats: async (workerId) => {
+    try {
+      const { data: applications, error } = await supabase
+        .from('applications')
+        .select('status, worker_confirmed, jobs(scheduled_date)')
+        .eq('worker_id', workerId);
+
+      if (error) throw error;
+
+      // Count applications by status
+      const stats = applications?.reduce((acc, app) => {
+        acc[app.status] = (acc[app.status] || 0) + 1;
+        return acc;
+      }, {}) || {};
+
+      // Count upcoming confirmed jobs
+      const now = new Date();
+      const upcomingJobs = applications?.filter(app =>
+        app.status === 'hired' &&
+        app.worker_confirmed === true &&
+        app.jobs &&
+        new Date(app.jobs.scheduled_date) > now
+      ).length || 0;
+
+      return {
+        pendingApplications: stats.applied || 0,
+        hiredOffers: stats.hired || 0,
+        upcomingJobs: upcomingJobs,
+        totalApplications: applications?.length || 0
+      };
+
+    } catch (error) {
+      console.error('Error getting worker stats:', error);
+      return {
+        pendingApplications: 0,
+        hiredOffers: 0,
+        upcomingJobs: 0,
+        totalApplications: 0
+      };
+    }
+  }
+};
+
 // ✅ NEW: Helper function to decode base64 to Uint8Array
 const decodeBase64 = (base64) => {
   try {
