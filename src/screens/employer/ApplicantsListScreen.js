@@ -51,7 +51,6 @@ export default function ApplicantsListScreen() {
         return;
       }
 
-      // Fetch job details and applications in one query - TYPE A (critical for employers)
       const { data, error } = await typeACall('FETCH_JOB_APPLICATIONS', async () => {
         return await supabase
           .from('applications')
@@ -73,7 +72,8 @@ export default function ApplicantsListScreen() {
               time_to,
               budget,
               budget_currency,
-              status
+              status,
+              worker_id
             )
           `)
           .eq('job_id', jobId)
@@ -85,32 +85,28 @@ export default function ApplicantsListScreen() {
       console.log('✅ Fetched applications:', data?.length || 0);
 
       if (data && data.length > 0) {
-        // Set job from first application (all should be the same job)
         setJob(data[0].jobs);
-        
-        // Fetch worker profiles separately to avoid join issues - TYPE A (critical for employers)
-        const workerIds = data.map(app => app.worker_id).filter(id => id); // Filter out undefined/null values
+
+        // Fetch worker profiles including rating data
+        const workerIds = data.map(app => app.worker_id).filter(id => id);
         const { data: profiles, error: profilesError } = await typeACall('FETCH_WORKER_PROFILES', async () => {
           return await supabase
             .from('profiles')
-            .select('id, full_name, bio, location_city, location_suburb, profile_picture_url')
+            .select('id, full_name, bio, location_city, location_suburb, profile_picture_url, avg_rating, total_ratings')
             .in('id', workerIds);
         });
 
         if (profilesError) {
           console.error('⚠️ Error fetching profiles:', profilesError);
-          // Continue without profiles
         }
 
-        // Combine applications with profiles
         const applicationsWithProfiles = data.map(app => ({
           ...app,
           profiles: profiles?.find(p => p.id === app.worker_id) || null
         }));
-        
+
         setApplications(applicationsWithProfiles);
       } else {
-        // No applications, but we still need job details - TYPE A (critical)
         const { data: jobData, error: jobError } = await typeACall('FETCH_JOB_DETAILS', async () => {
           return await supabase
             .from('jobs')
@@ -141,7 +137,7 @@ export default function ApplicantsListScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Hire',
-          onPress: () => processHireDecline(application.id, 'hired')
+          onPress: () => processHireDecline(application.id, 'hired', application.worker_id)
         }
       ]
     );
@@ -155,19 +151,18 @@ export default function ApplicantsListScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Decline',
-          onPress: () => processHireDecline(application.id, 'declined')
+          onPress: () => processHireDecline(application.id, 'declined', application.worker_id)
         }
       ]
     );
   };
 
-  const processHireDecline = async (applicationId, newStatus) => {
+  const processHireDecline = async (applicationId, newStatus, workerId) => {
     setProcessingAction(applicationId);
 
     try {
       console.log(`🔄 Updating application ${applicationId} to ${newStatus}`);
 
-      // Update application status - TYPE A (critical)
       await typeACall('UPDATE_APPLICATION_STATUS', async () => {
         const { error } = await supabase
           .from('applications')
@@ -180,19 +175,26 @@ export default function ApplicantsListScreen() {
         if (error) throw error;
       });
 
-      // If hiring, update job status and decline other applications
       if (newStatus === 'hired') {
-        // Update job status to hired - TYPE A (critical)
         await typeACall('UPDATE_JOB_STATUS_HIRED', async () => {
           const { error } = await supabase
             .from('jobs')
-            .update({ status: 'hired' })
+            .update({ status: 'hired', worker_id: workerId })
             .eq('id', jobId);
 
           if (error) throw error;
         });
 
-        // Decline all other applications for this job - TYPE A (critical)
+        // Update local storage immediately so edit button hides without refresh
+        const localJobs = await storageService.getMyJobs();
+        if (localJobs) {
+          const updatedJobs = localJobs.map(j =>
+            j.id === jobId ? { ...j, status: 'hired', worker_id: workerId } : j
+          );
+          await storageService.setMyJobs(updatedJobs);
+          console.log('💾 Local cache updated with hired status and worker_id');
+        }
+
         await typeACall('DECLINE_OTHER_APPLICATIONS', async () => {
           const { error } = await supabase
             .from('applications')
@@ -205,14 +207,12 @@ export default function ApplicantsListScreen() {
 
           if (error) {
             console.error('⚠️ Error declining other applications:', error);
-            // Don't throw - job is still hired
           }
         });
       }
 
       console.log(`✅ Application ${applicationId} updated to ${newStatus}`);
 
-      // Show success message
       Alert.alert(
         'Success',
         newStatus === 'hired'
@@ -221,7 +221,6 @@ export default function ApplicantsListScreen() {
         [{ text: 'OK' }]
       );
 
-      // Refresh the list
       fetchApplicants(true);
 
     } catch (error) {
@@ -263,18 +262,16 @@ export default function ApplicantsListScreen() {
     }
   };
 
-  // UPDATED: Added worker_confirmed parameter
   const getApplicationStatusColor = (status, workerConfirmed = false) => {
     const colors = {
-      'applied': '#3b82f6',    // Blue
-      'hired': workerConfirmed ? '#10b981' : '#f59e0b', // Green if confirmed, Amber if pending
-      'declined': '#ef4444',   // Red
-      'withdrawn': '#6b7280'   // Gray
+      'applied': '#3b82f6',
+      'hired': workerConfirmed ? '#10b981' : '#f59e0b',
+      'declined': '#ef4444',
+      'withdrawn': '#6b7280'
     };
     return colors[status] || '#6b7280';
   };
 
-  // NEW: Added helper function for status display
   const getApplicationStatusDisplay = (status, workerConfirmed = false) => {
     const statusMap = {
       'applied': 'Applied',
@@ -283,6 +280,42 @@ export default function ApplicantsListScreen() {
       'withdrawn': 'Withdrawn'
     };
     return statusMap[status] || status;
+  };
+
+  // Render star rating display
+  const StarDisplay = ({ rating, totalRatings }) => {
+    if (!rating || totalRatings === 0) {
+      return (
+        <Text style={styles.noRatingText}>No ratings yet</Text>
+      );
+    }
+
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating - fullStars >= 0.5;
+
+    return (
+      <View style={styles.starContainer}>
+        <View style={styles.starsRow}>
+          {[1, 2, 3, 4, 5].map((star) => (
+            <Ionicons
+              key={star}
+              name={
+                star <= fullStars
+                  ? 'star'
+                  : star === fullStars + 1 && hasHalfStar
+                  ? 'star-half'
+                  : 'star-outline'
+              }
+              size={14}
+              color="#f59e0b"
+            />
+          ))}
+        </View>
+        <Text style={styles.ratingText}>
+          {rating.toFixed(1)} ({totalRatings} rating{totalRatings !== 1 ? 's' : ''})
+        </Text>
+      </View>
+    );
   };
 
   if (loading) {
@@ -300,22 +333,18 @@ export default function ApplicantsListScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
           </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.title}>Applicants</Text>
+            <Text style={styles.title}>
+              {job?.status === 'active' || job?.status === 'completed' ? 'Worker' : 'Applicants'}
+            </Text>
             <Text style={styles.subtitle}>
               {job?.job_reference} • {applications.length} applicant{applications.length !== 1 ? 's' : ''}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={onRefresh}
-          >
+          <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
             <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
@@ -361,12 +390,16 @@ export default function ApplicantsListScreen() {
                       {application.profiles?.full_name || 'Unknown Worker'}
                     </Text>
                     <Text style={styles.applicantLocation}>
-                      {application.profiles?.location_suburb && application.profiles?.location_city 
+                      {application.profiles?.location_suburb && application.profiles?.location_city
                         ? `${application.profiles.location_suburb}, ${application.profiles.location_city}`
                         : application.profiles?.location_city || 'Location not specified'}
                     </Text>
+                    {/* Star Rating */}
+                    <StarDisplay
+                      rating={application.profiles?.avg_rating}
+                      totalRatings={application.profiles?.total_ratings || 0}
+                    />
                   </View>
-                  {/* UPDATED: Status badge with worker_confirmed parameter */}
                   <View style={[
                     styles.statusBadge,
                     { backgroundColor: getApplicationStatusColor(application.status, application.worker_confirmed) + '20' }
@@ -416,7 +449,6 @@ export default function ApplicantsListScreen() {
                   </View>
                 )}
 
-                {/* UPDATED: Conditional rendering for hired applications */}
                 {application.status === 'hired' && !application.worker_confirmed && (
                   <View style={styles.statusMessage}>
                     <Text style={styles.statusMessageText}>
@@ -565,6 +597,27 @@ const styles = {
   applicantLocation: {
     fontSize: SIZES.small,
     color: COLORS.gray600,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  // Star rating styles
+  starContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    marginRight: 6,
+  },
+  ratingText: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray600,
+  },
+  noRatingText: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray400,
+    fontStyle: 'italic',
     marginTop: 2,
   },
   statusBadge: {

@@ -324,11 +324,11 @@ export default function JobDetailScreen() {
                 </Text>
               </View>
 
-              {job.status === 'open' && (
-                <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-                  <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
-                </TouchableOpacity>
-              )}
+              {(job.status === 'open' && !job.worker_id) && (
+  <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+    <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
+  </TouchableOpacity>
+)}
             </View>
 
             <View style={styles.detailRow}>

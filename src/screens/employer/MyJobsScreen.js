@@ -365,7 +365,7 @@ useEffect(() => {
               {/* Action Buttons */}
               <View style={styles.buttonRow}>
                 <Button
-                  title="View Applicants"
+                  title={['active', 'completed'].includes(job.status) ? "View Worker" : "View Applicants"}
                   onPress={() => handleViewApplicants(job)}
                   variant="outline"
                   style={styles.applicantsButton}
