@@ -325,62 +325,46 @@ export default function MyApplicationsScreen() {
   };
 
   const confirmHireAcceptance = async () => {
-    if (!selectedApplication) return;
+  if (!selectedApplication) return;
 
-    setProcessingAction(selectedApplication.id);
+  setProcessingAction(selectedApplication.id);
 
-    try {
-      const job = selectedApplication.jobs;
-      
-      
-      // Update application with worker confirmation
-      const { error: updateError } = await supabase
-        .from('applications')
-        .update({
-          worker_confirmed: true,
-          worker_confirmed_at: new Date().toISOString()
-        })
-        .eq('id', selectedApplication.id);
+  try {
+    const job = selectedApplication.jobs;
 
-      if (updateError) throw updateError;
+    // Update application and job status in one RPC call
+    const { error: updateError } = await supabase
+      .rpc('confirm_job_hire', {
+        p_application_id: selectedApplication.id,
+        p_job_id: job.id,
+        p_worker_id: currentUser.id
+      });
 
-      // Update job status to active and set worker_id
-      const { error: jobError } = await supabase
-        .from('jobs')
-        .update({
-          status: 'active',
-          worker_id: currentUser.id
-        })
-        .eq('id', job.id);
+    if (updateError) throw updateError;
 
-      if (jobError) {
-        console.error('Job update error:', jobError);
-        // Continue anyway - at least the application is confirmed
-      }
+    console.log('✅ Job confirmed and set to active');
 
-      // AUTO-DECLINE conflicting hire offers (from other employers)
-      await autoDeclineConflictingOffers(selectedApplication);
+    // AUTO-DECLINE conflicting hire offers
+    await autoDeclineConflictingOffers(selectedApplication);
 
-      // Success
-      Alert.alert(
-        'Success! 🎉',
-        `You have accepted the hire for "${job.job_reference}".\n\n` +
-        `The employer has been notified and the job is now active.`,
-        [{ text: 'OK' }]
-      );
+    Alert.alert(
+      'Success! 🎉',
+      `You have accepted the hire for "${job.job_reference}".\n\n` +
+      `The employer has been notified and the job is now active.`,
+      [{ text: 'OK' }]
+    );
 
-      // Refresh applications
-      fetchApplications();
+    fetchApplications();
 
-    } catch (error) {
-      console.error('Error confirming hire:', error);
-      Alert.alert('Error', 'Failed to accept hire offer. Please try again.');
-    } finally {
-      setProcessingAction(null);
-      setShowConfirmModal(false);
-      setSelectedApplication(null);
-    }
-  };
+  } catch (error) {
+    console.error('Error confirming hire:', error);
+    Alert.alert('Error', 'Failed to accept hire offer. Please try again.');
+  } finally {
+    setProcessingAction(null);
+    setShowConfirmModal(false);
+    setSelectedApplication(null);
+  }
+};
 
   const autoDeclineConflictingOffers = async (acceptedApplication) => {
     try {

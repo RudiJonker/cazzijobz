@@ -1,4 +1,4 @@
-// src/screens/employer/JobDetailScreen.js - WITH BACK BUTTON
+// src/screens/employer/JobDetailScreen.js
 import React, { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -6,7 +6,8 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,37 +23,61 @@ export default function JobDetailScreen() {
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
+  const [isJobReadyToFinalize, setIsJobReadyToFinalize] = useState(false);
 
   useEffect(() => {
     fetchJobDetails();
   }, [jobId]);
 
+  // Check if job is ready to finalize whenever job data changes
+  useEffect(() => {
+    if (job) {
+      setIsJobReadyToFinalize(checkIfReadyToFinalize(job));
+    }
+  }, [job]);
+
+  const checkIfReadyToFinalize = (jobData) => {
+    if (jobData.status !== 'active') return false;
+
+    // Check if scheduled time has passed
+    const now = new Date();
+    const jobDate = jobData.scheduled_date; // e.g. "2026-02-25"
+    const jobTimeTo = jobData.time_to;      // e.g. "12:00:00"
+
+    if (!jobDate || !jobTimeTo) return false;
+
+    const [hours, minutes] = jobTimeTo.split(':').map(Number);
+    const jobEndDateTime = new Date(jobDate);
+    jobEndDateTime.setHours(hours, minutes, 0, 0);
+
+    return now >= jobEndDateTime;
+  };
+
   const fetchJobDetails = async () => {
     try {
-      // STEP 1: Always try local storage first (immediate)
       const localJobs = await storageService.getMyJobs();
-      const localJob = localJobs.find(j => j.id === jobId);
-      
+      const localJob = localJobs?.find(j => j.id === jobId);
+
       if (localJob) {
         console.log('💾 Loading job from local storage');
         setJob(localJob);
         setLoading(false);
-        
-        // Check if data might be stale (optional - can be removed)
+
         const now = new Date();
         const lastRefresh = await storageService.getLastJobsRefresh();
         if (lastRefresh) {
-          const timeSinceLastRefresh = (now - new Date(lastRefresh)) / 1000 / 60; // minutes
+          const timeSinceLastRefresh = (now - new Date(lastRefresh)) / 1000 / 60;
           if (timeSinceLastRefresh > 5) {
             setNeedsRefresh(true);
-            console.log('📱 Job data may be stale');
           }
         }
       }
 
-      // STEP 2: Only make API call if we don't have local data OR data is stale
       if (!localJob || needsRefresh) {
-        console.log('📥 TYPE A CALL - Fetching job details from Supabase');
+        console.log('📥 Fetching job details from Supabase');
         const { data, error } = await supabase
           .from('jobs')
           .select('*')
@@ -63,8 +88,7 @@ export default function JobDetailScreen() {
 
         if (data) {
           setJob(data);
-          // Update local storage
-          const updatedJobs = localJobs.map(j => j.id === jobId ? data : j);
+          const updatedJobs = localJobs?.map(j => j.id === jobId ? data : j) || [data];
           await storageService.setMyJobs(updatedJobs);
           setNeedsRefresh(false);
         }
@@ -72,7 +96,6 @@ export default function JobDetailScreen() {
 
     } catch (error) {
       console.error('❌ Error fetching job details:', error);
-      // Don't show alert if we have local data
       if (!job) {
         Alert.alert('Error', 'Failed to load job details');
       }
@@ -81,18 +104,96 @@ export default function JobDetailScreen() {
     }
   };
 
-  // Manual refresh function (if needed)
   const handleManualRefresh = async () => {
     setLoading(true);
     await fetchJobDetails();
   };
 
   const handleEdit = () => {
-    // Only allow editing if job is open
     if (job.status === 'open') {
       navigation.navigate('EditJob', { jobId: job.id });
     } else {
       Alert.alert('Cannot Edit', 'This job can no longer be edited as it has already been filled.');
+    }
+  };
+
+  const handleFinalizePress = () => {
+    setSelectedRating(0);
+    setShowRatingModal(true);
+  };
+
+  const handleConfirmFinalize = async () => {
+    if (selectedRating === 0) {
+      Alert.alert('Rating Required', 'Please select a star rating before finalizing.');
+      return;
+    }
+
+    setFinalizing(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Save the rating
+      const { error: ratingError } = await supabase
+        .from('ratings')
+        .insert([{
+          job_id: job.id,
+          employer_id: user.id,
+          worker_id: job.worker_id,
+          rating: selectedRating
+        }]);
+
+      if (ratingError) throw ratingError;
+
+      // Update worker's average rating on their profile
+      const { data: ratingData, error: avgError } = await supabase
+        .from('ratings')
+        .select('rating')
+        .eq('worker_id', job.worker_id);
+
+      if (!avgError && ratingData) {
+        const totalRatings = ratingData.length;
+        const avgRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
+
+        await supabase
+          .from('profiles')
+          .update({
+            avg_rating: Math.round(avgRating * 100) / 100,
+            total_ratings: totalRatings
+          })
+          .eq('id', job.worker_id);
+      }
+
+      // Mark job as completed
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ status: 'completed' })
+        .eq('id', job.id);
+
+      if (jobError) throw jobError;
+
+      // Update local storage
+      const localJobs = await storageService.getMyJobs();
+      const updatedJobs = localJobs?.map(j =>
+        j.id === job.id ? { ...j, status: 'completed' } : j
+      ) || [];
+      await storageService.setMyJobs(updatedJobs);
+
+      setJob(prev => ({ ...prev, status: 'completed' }));
+
+      Alert.alert(
+        'Job Finalized! ✅',
+        `Thank you for rating this worker ${selectedRating} star${selectedRating !== 1 ? 's' : ''}.\n\nThis job has been marked as completed.`,
+        [{ text: 'OK' }]
+      );
+
+    } catch (error) {
+      console.error('Error finalizing job:', error);
+      Alert.alert('Error', 'Failed to finalize job. Please try again.');
+    } finally {
+      setFinalizing(false);
+      setShowRatingModal(false);
     }
   };
 
@@ -123,7 +224,6 @@ export default function JobDetailScreen() {
     }
   };
 
-  // Helper function to format status display
   const getStatusDisplay = (status) => {
     const statusMap = {
       'open': 'Open',
@@ -134,6 +234,35 @@ export default function JobDetailScreen() {
       'expired': 'Expired'
     };
     return statusMap[status] || status;
+  };
+
+  const StarRating = ({ rating, onSelect }) => (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <TouchableOpacity
+          key={star}
+          onPress={() => onSelect(star)}
+          style={styles.starButton}
+        >
+          <Ionicons
+            name={star <= rating ? 'star' : 'star-outline'}
+            size={40}
+            color={star <= rating ? '#f59e0b' : COLORS.gray400}
+          />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const getRatingLabel = (rating) => {
+    const labels = {
+      1: 'Poor',
+      2: 'Below Average',
+      3: 'Average',
+      4: 'Good',
+      5: 'Excellent'
+    };
+    return labels[rating] || '';
   };
 
   if (loading) {
@@ -148,18 +277,7 @@ export default function JobDetailScreen() {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Job not found</Text>
-        <Button
-          title="Go Back"
-          onPress={() => navigation.goBack()}
-          style={{ marginTop: SIZES.margin }}
-        />
-        {needsRefresh && (
-          <Button
-            title="Try Again"
-            onPress={handleManualRefresh}
-            style={{ marginTop: SIZES.margin }}
-          />
-        )}
+        <Button title="Go Back" onPress={() => navigation.goBack()} style={{ marginTop: SIZES.margin }} />
       </View>
     );
   }
@@ -167,45 +285,37 @@ export default function JobDetailScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        {/* STICKY AdMob Banner - UPDATED: More top margin */}
+        {/* AdMob Banner Placeholder */}
         <View style={styles.stickyAdBanner}>
           <Text style={styles.adText}>AdMob Banner Placeholder</Text>
           <Text style={styles.adSubtext}>This ad stays visible while scrolling</Text>
         </View>
 
-        {/* NEW: Header with Back Button and Title */}
+        {/* Header */}
         <View style={styles.header}>
-  <TouchableOpacity 
-    style={styles.backButton}
-    onPress={() => navigation.goBack()}
-  >
-    <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
-    <Text style={styles.backText}>Back</Text>
-  </TouchableOpacity>
-  
-  <Text style={styles.headerTitle}>Job Details</Text>
-  
-  <View style={styles.headerRight}>
-    {needsRefresh && (
-      <TouchableOpacity 
-        style={styles.refreshButton}
-        onPress={handleManualRefresh}
-      >
-        <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
-      </TouchableOpacity>
-    )}
-  </View>
-</View>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.primary} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
 
-        {/* Scrollable Content Area - UPDATED: Increased marginTop */}
-        <ScrollView 
+          <Text style={styles.headerTitle}>Job Details</Text>
+
+          <View style={styles.headerRight}>
+            {needsRefresh && (
+              <TouchableOpacity style={styles.refreshButton} onPress={handleManualRefresh}>
+                <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
         >
           {/* Job Details Card */}
           <View style={styles.detailCard}>
-            {/* Job Header with Edit Pencil Icon */}
             <View style={styles.cardHeader}>
               <View style={styles.headerLeft}>
                 <Text style={styles.jobReference}>{job.job_reference}</Text>
@@ -213,19 +323,14 @@ export default function JobDetailScreen() {
                   Status: {getStatusDisplay(job.status)}
                 </Text>
               </View>
-              
-              {/* UPDATED: Edit button as pencil icon (only for open jobs) */}
+
               {job.status === 'open' && (
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={handleEdit}
-                >
+                <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
                   <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Category as detail row */}
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Category:</Text>
               <Text style={styles.categoryValue}>{job.category}</Text>
@@ -262,38 +367,95 @@ export default function JobDetailScreen() {
               <Text style={styles.detailLabel}>Budget:</Text>
               <Text style={styles.detailValue}>{job.budget_currency} {job.budget}</Text>
             </View>
-
-            {/* REMOVED: View Applicants button from this screen */}
           </View>
 
-          {/* Additional Info Card - UPDATED: Remove applicants info */}
+          {/* Finalize Job Card - only shown when ready */}
+          {isJobReadyToFinalize && (
+            <View style={styles.finalizeCard}>
+              <Text style={styles.finalizeTitle}>🎉 Job Complete!</Text>
+              <Text style={styles.finalizeText}>
+                The scheduled time for this job has passed. Please rate the worker to finalize this job.
+              </Text>
+              <Button
+                title="Rate Worker & Finalize"
+                onPress={handleFinalizePress}
+                style={styles.finalizeButton}
+              />
+            </View>
+          )}
+
+          {/* Completed status card */}
+          {job.status === 'completed' && (
+            <View style={styles.completedCard}>
+              <Text style={styles.completedTitle}>✅ Job Finalized</Text>
+              <Text style={styles.completedText}>
+                This job has been completed and the worker has been rated.
+              </Text>
+            </View>
+          )}
+
+          {/* Info Card */}
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>About this Job</Text>
             <Text style={styles.infoText}>
               • This job is {job.status === 'open' ? 'open for applications' : getStatusDisplay(job.status).toLowerCase()}{'\n'}
               • You can edit this job while it's still open{'\n'}
               • Applicants will be shown in the main jobs list{'\n'}
-              • Close this job when you've found a worker{'\n'}
+              • Rate the worker once the job is complete{'\n'}
             </Text>
           </View>
         </ScrollView>
 
-        {/* PERMANENT FOOTER SAFE ZONE */}
         <View style={styles.footerSafeZone} />
       </View>
+
+      {/* Rating Modal */}
+      <Modal visible={showRatingModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rate the Worker</Text>
+            <Text style={styles.modalSubtitle}>
+              How did the worker perform for job {job.job_reference}?
+            </Text>
+
+            <StarRating rating={selectedRating} onSelect={setSelectedRating} />
+
+            {selectedRating > 0 && (
+              <Text style={styles.ratingLabel}>
+                {getRatingLabel(selectedRating)}
+              </Text>
+            )}
+
+            <View style={styles.modalButtons}>
+              <Button
+                title="Cancel"
+                onPress={() => setShowRatingModal(false)}
+                variant="outline"
+                style={[styles.modalButton, { flex: 1, marginRight: 8 }]}
+                disabled={finalizing}
+              />
+              <Button
+                title={finalizing ? "Finalizing..." : "Confirm & Finalize"}
+                onPress={handleConfirmFinalize}
+                style={[styles.modalButton, { flex: 1, marginLeft: 8 }]}
+                disabled={finalizing || selectedRating === 0}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// Helper function for status colors
 const getStatusColor = (status) => {
   const colors = {
-    open: '#10b981', // green
-    hired: '#f59e0b', // amber
-    active: '#3b82f6', // blue
-    completed: '#6366f1', // indigo
-    cancelled: '#ef4444', // red
-    expired: '#6b7280' // gray
+    open: '#10b981',
+    hired: '#f59e0b',
+    active: '#3b82f6',
+    completed: '#6366f1',
+    cancelled: '#ef4444',
+    expired: '#6b7280'
   };
   return colors[status] || '#6b7280';
 };
@@ -307,10 +469,9 @@ const styles = {
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  // UPDATED: More top margin for the banner
   stickyAdBanner: {
     position: 'absolute',
-    top: 10, // CHANGED: Increased from 15 to 35
+    top: 10,
     left: 0,
     right: 0,
     backgroundColor: COLORS.gray200,
@@ -332,19 +493,17 @@ const styles = {
     fontSize: SIZES.xSmall,
     fontStyle: 'italic',
   },
-  // NEW: Header with Back Button
   header: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: SIZES.padding,
-  paddingTop: 50, // Reduced padding since we don't have system header
-  backgroundColor: COLORS.white,
-  borderBottomWidth: 1,
-  borderBottomColor: COLORS.gray200,
-  marginTop: 35,
-  
-},
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SIZES.padding,
+    paddingTop: 50,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+    marginTop: 35,
+  },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -367,30 +526,18 @@ const styles = {
     zIndex: -1,
   },
   headerRight: {
-    width: 80, // Balance the back button space
+    width: 80,
     alignItems: 'flex-end',
   },
-  refreshText: {
-    fontSize: SIZES.xSmall,
-    color: COLORS.primary,
-    fontWeight: '500',
+  refreshButton: {
+    padding: 8,
   },
-  // UPDATED: Adjusted marginTop since we have a proper header now
   scrollView: {
     flex: 1,
-    marginTop: 0, // CHANGED: Header now handles the spacing
   },
   scrollContent: {
     paddingBottom: 10,
   },
-  // PERMANENT FOOTER SAFE ZONE
-  footerSafeZone: {
-    height: 50,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray200,
-  },
-  // Job Details Card
   detailCard: {
     margin: SIZES.margin,
     padding: SIZES.padding,
@@ -404,7 +551,6 @@ const styles = {
     shadowRadius: 4,
     elevation: 2,
   },
-  // Card Header with job reference and edit button
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -427,7 +573,6 @@ const styles = {
     fontSize: SIZES.small,
     fontWeight: '600',
   },
-  // NEW: Edit button style matching magnifying glass
   editButton: {
     padding: 8,
     marginLeft: 8,
@@ -447,12 +592,55 @@ const styles = {
     color: COLORS.gray800,
     flex: 1,
   },
-  // NEW: Category value with blue bold styling
   categoryValue: {
     fontSize: SIZES.small,
-    color: COLORS.primary, // Blue color
-    fontWeight: 'bold', // Bold font
+    color: COLORS.primary,
+    fontWeight: 'bold',
     flex: 1,
+  },
+  // Finalize card
+  finalizeCard: {
+    margin: SIZES.margin,
+    padding: SIZES.padding,
+    backgroundColor: '#fef3c7',
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  finalizeTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#92400e',
+    marginBottom: 8,
+  },
+  finalizeText: {
+    fontSize: SIZES.small,
+    color: '#78350f',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  finalizeButton: {
+    backgroundColor: '#f59e0b',
+  },
+  // Completed card
+  completedCard: {
+    margin: SIZES.margin,
+    padding: SIZES.padding,
+    backgroundColor: '#d1fae5',
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  completedTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#065f46',
+    marginBottom: 8,
+  },
+  completedText: {
+    fontSize: SIZES.small,
+    color: '#047857',
+    lineHeight: 20,
   },
   infoCard: {
     margin: SIZES.margin,
@@ -484,5 +672,63 @@ const styles = {
     marginTop: SIZES.padding * 2,
     color: COLORS.error,
     fontSize: SIZES.medium,
+  },
+  footerSafeZone: {
+    height: 50,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+  },
+  // Rating Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIZES.padding,
+  },
+  modalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radius * 2,
+    padding: SIZES.padding * 1.5,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: SIZES.large,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: SIZES.small,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  starButton: {
+    padding: 8,
+  },
+  ratingLabel: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#f59e0b',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  modalButton: {
+    minHeight: 44,
   },
 };
