@@ -1,4 +1,4 @@
-// src/screens/employer/MyJobsScreen.js - UPDATED WITH REFRESH ICON
+// src/screens/employer/MyJobsScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -6,7 +6,8 @@ import {
   Text,
   TouchableOpacity,
   RefreshControl,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,38 +28,42 @@ export default function MyJobsScreen() {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [dataStale, setDataStale] = useState(false);
 
-  
+  // Finalization modal state
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+  const [jobToFinalize, setJobToFinalize] = useState(null);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [finalizing, setFinalizing] = useState(false);
 
   // Check if API call is allowed (spam prevention)
   const isRefreshAllowed = async () => {
     const storedRefreshTime = await storageService.getLastJobsRefresh();
-    
+
     if (!storedRefreshTime) {
       console.log('⏱️ First refresh allowed - no previous refresh time');
       return true;
     }
-    
+
     const now = new Date();
     const lastCall = new Date(storedRefreshTime);
     const timeSinceLastCall = (now - lastCall) / 1000;
     const timeout = 60;
-    
+
     const allowed = timeSinceLastCall >= timeout;
-    
+
     console.log('⏱️ Refresh Check:', {
       allowed,
       lastCall: storedRefreshTime,
       timeSinceLastCall: `${timeSinceLastCall}s`,
       timeout: `${timeout}s`
     });
-    
+
     return allowed;
   };
 
   // Fetch employer jobs
   const fetchMyJobs = async (forceRefresh = false) => {
     console.log('🔄 fetchMyJobs called, forceRefresh:', forceRefresh);
-    
+
     if (forceRefresh) {
       const refreshAllowed = await isRefreshAllowed();
       if (!refreshAllowed) {
@@ -67,7 +72,7 @@ export default function MyJobsScreen() {
         return;
       }
     }
-    
+
     let currentUser = user;
     if (!currentUser) {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -82,20 +87,18 @@ export default function MyJobsScreen() {
     }
 
     try {
-      // STEP 1: Load from local storage first
       const localJobs = await storageService.getMyJobs();
       console.log('💾 Local jobs found:', localJobs?.length || 0);
-      
+
       if (localJobs && localJobs.length > 0) {
         setJobs(localJobs);
         setLoading(false);
         setDataStale(false);
       }
 
-      // STEP 2: Only make API call if explicitly requested
       if (forceRefresh) {
         console.log('📥 TYPE A CALL - Manual refresh from Supabase');
-        
+
         const { data, error } = await supabase
           .from('jobs')
           .select('*')
@@ -105,21 +108,24 @@ export default function MyJobsScreen() {
         if (error) throw error;
 
         console.log('✅ Supabase jobs fetched:', data?.length || 0);
-        
+
         if (data) {
           await storageService.setMyJobs(data);
           setJobs(data);
           setDataStale(false);
-          
+
           const refreshTime = new Date().toISOString();
           await storageService.setLastJobsRefresh(refreshTime);
           setLastRefreshTime(refreshTime);
+
+          // Check for jobs needing finalization after fresh data
+          checkForJobsToFinalize(data);
         }
       }
 
     } catch (error) {
       console.error('💥 Error fetching jobs:', error);
-      
+
       const localJobs = await storageService.getMyJobs();
       if (localJobs && localJobs.length > 0) {
         console.log('🔄 Using local data due to Supabase error');
@@ -136,71 +142,178 @@ export default function MyJobsScreen() {
     }
   };
 
- // Initial load - ALWAYS show local data first
-useEffect(() => {
-  const initializeJobs = async () => {
-    console.log('🚀 MyJobsScreen mounted - loading from local storage');
+  // Initial load
+  useEffect(() => {
+    const initializeJobs = async () => {
+      console.log('🚀 MyJobsScreen mounted - loading from local storage');
 
-    let currentUser = user;
-    if (!currentUser) {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      currentUser = authUser;
-    }
+      let currentUser = user;
+      if (!currentUser) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        currentUser = authUser;
+      }
 
-// Silently expire any lapsed jobs
-  await jobService.expireLapsedJobs(currentUser?.id);
+      // Silently expire any lapsed jobs
+      await jobService.expireLapsedJobs(currentUser?.id);
 
-    const storedRefreshTime = await storageService.getLastJobsRefresh();
-    if (storedRefreshTime) {
-      setLastRefreshTime(storedRefreshTime);
-    }
+      const storedRefreshTime = await storageService.getLastJobsRefresh();
+      if (storedRefreshTime) {
+        setLastRefreshTime(storedRefreshTime);
+      }
 
-    const localJobs = await storageService.getMyJobs();
+      const localJobs = await storageService.getMyJobs();
+      const myJobs = localJobs?.filter(j => j.employer_id === currentUser?.id) || [];
 
-    // Expire any lapsed jobs silently
-await jobService.expireLapsedJobs(currentUser?.id);
-    
-    // Filter cached jobs to only show current employer's jobs
-    const myJobs = localJobs?.filter(j => j.employer_id === currentUser?.id) || [];
-    
-    if (myJobs.length > 0) {
-      console.log('💾 Showing cached employer jobs:', myJobs.length);
-      setJobs(myJobs);
+      if (myJobs.length > 0) {
+        console.log('💾 Showing cached employer jobs:', myJobs.length);
+        setJobs(myJobs);
+
+        const now = new Date();
+        if (storedRefreshTime) {
+          const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
+          if (timeSinceLastRefresh > 5) {
+            setDataStale(true);
+          }
+        }
+
+        // Check for jobs needing finalization on mount
+        checkForJobsToFinalize(myJobs);
+      } else {
+        setJobs([]);
+        setDataStale(true);
+      }
+
+      setLoading(false);
+    };
+
+    initializeJobs();
+  }, []);
+
+  // Navigation focus
+  useEffect(() => {
+    if (isFocused) {
+      console.log('🎯 MyJobsScreen focused - NO API calls');
 
       const now = new Date();
-      if (storedRefreshTime) {
-        const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
-        if (timeSinceLastRefresh > 5) {
-          setDataStale(true);
-        }
-      }
-    } else {
-      setJobs([]);
-      setDataStale(true);
-    }
+      const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
 
-    setLoading(false);
+      if (isStale) {
+        setDataStale(true);
+        console.log('📱 Data may be stale - showing refresh indicator');
+      }
+
+      // Check for jobs needing finalization on focus
+      if (jobs.length > 0) {
+        checkForJobsToFinalize(jobs);
+      }
+    }
+  }, [isFocused, lastRefreshTime]);
+
+  // Check if any active jobs have passed their end time
+  const checkForJobsToFinalize = (jobsList) => {
+    if (showFinalizeModal) return; // Don't show if already showing
+
+    const now = new Date();
+    const jobNeedingFinalization = jobsList.find(job => {
+      if (job.status !== 'active') return false;
+      if (!job.time_to || !job.scheduled_date) return false;
+      const [hours, minutes] = job.time_to.split(':').map(Number);
+      const jobEnd = new Date(job.scheduled_date);
+      jobEnd.setHours(hours, minutes, 0, 0);
+      return now >= jobEnd;
+    });
+
+    if (jobNeedingFinalization) {
+      console.log('⭐ Job ready to finalize:', jobNeedingFinalization.job_reference);
+      setJobToFinalize(jobNeedingFinalization);
+      setSelectedRating(0);
+      setShowFinalizeModal(true);
+    }
   };
 
-  initializeJobs();
-}, []);
-
-// Navigation focus - ONLY set stale indicator, NO API calls
-useEffect(() => {
-  if (isFocused) {
-    console.log('🎯 MyJobsScreen focused - NO API calls');
-    
-    const now = new Date();
-    const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
-    
-    if (isStale) {
-      setDataStale(true);
-      console.log('📱 Data may be stale - showing refresh indicator');
+  const handleConfirmFinalize = async () => {
+    if (selectedRating === 0) {
+      Alert.alert('Rating Required', 'Please select a star rating before finalizing.');
+      return;
     }
-  }
-}, [isFocused, lastRefreshTime]);
 
-  // Pull to refresh - ONLY manual API calls allowed
+    setFinalizing(true);
+
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error('Not authenticated');
+
+      // Save rating
+      const { error: ratingError } = await supabase
+        .from('ratings')
+        .insert([{
+          job_id: jobToFinalize.id,
+          employer_id: currentUser.id,
+          worker_id: jobToFinalize.worker_id,
+          rating: selectedRating
+        }]);
+
+      if (ratingError) throw ratingError;
+
+      // Update worker's average rating
+      const { data: ratingData } = await supabase
+        .from('ratings')
+        .select('rating')
+        .eq('worker_id', jobToFinalize.worker_id);
+
+      if (ratingData) {
+        const totalRatings = ratingData.length;
+        const avgRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
+        await supabase
+          .from('profiles')
+          .update({
+            avg_rating: Math.round(avgRating * 100) / 100,
+            total_ratings: totalRatings
+          })
+          .eq('id', jobToFinalize.worker_id);
+      }
+
+      // Mark job as completed
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ status: 'completed' })
+        .eq('id', jobToFinalize.id);
+
+      if (jobError) throw jobError;
+
+      // Update local storage
+      const localJobs = await storageService.getMyJobs();
+      if (localJobs) {
+        const updatedJobs = localJobs.map(j =>
+          j.id === jobToFinalize.id ? { ...j, status: 'completed' } : j
+        );
+        await storageService.setMyJobs(updatedJobs);
+        setJobs(updatedJobs.filter(j => j.employer_id === currentUser.id));
+      }
+
+      Alert.alert(
+        'Job Finalized! ✅',
+        `Thank you for rating this worker ${selectedRating} star${selectedRating !== 1 ? 's' : ''}.`,
+        [{ text: 'OK' }]
+      );
+
+    } catch (error) {
+      console.error('Error finalizing job:', error);
+      Alert.alert('Error', 'Failed to finalize job. Please try again.');
+    } finally {
+      setFinalizing(false);
+      setShowFinalizeModal(false);
+      setJobToFinalize(null);
+      setSelectedRating(0);
+    }
+  };
+
+  const getRatingLabel = (rating) => {
+    const labels = { 1: 'Poor', 2: 'Below Average', 3: 'Average', 4: 'Good', 5: 'Excellent' };
+    return labels[rating] || '';
+  };
+
+  // Pull to refresh
   const onRefresh = () => {
     console.log('⬇️ Pull to refresh triggered - manual API call');
     setRefreshing(true);
@@ -212,7 +325,7 @@ useEffect(() => {
     navigation.navigate('JobDetail', { jobId: job.id });
   };
 
-  // Navigate to applicants list (via View Applicants button)
+  // Navigate to applicants list
   const handleViewApplicants = (job) => {
     navigation.navigate('ApplicantsList', { jobId: job.id });
   };
@@ -245,12 +358,12 @@ useEffect(() => {
 
   const getStatusColor = (status) => {
     const statusColors = {
-      'open': '#10b981',      // Green
-      'hired': '#3b82f6',     // Blue
-      'active': '#f59e0b',    // Amber
-      'completed': '#6b7280', // Gray
-      'cancelled': '#ef4444', // Red
-      'expired': '#6b7280'    // Gray
+      'open': '#10b981',
+      'hired': '#3b82f6',
+      'active': '#f59e0b',
+      'completed': '#6b7280',
+      'cancelled': '#ef4444',
+      'expired': '#6b7280'
     };
     return statusColors[status] || '#6b7280';
   };
@@ -264,26 +377,21 @@ useEffect(() => {
   }
 
   console.log('🎯 MyJobsScreen render - dataStale:', dataStale, 'jobs count:', jobs.length);
-  
 
   return (
     <View style={styles.container}>
-      {/* Clean Header with Refresh Icon */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>My Jobs</Text>
           <Text style={styles.subtitle}>
             {jobs.length} job{jobs.length !== 1 ? 's' : ''} posted
-            {lastRefreshTime && ` • Updated ${new Date(lastRefreshTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`}
+            {lastRefreshTime && ` • Updated ${new Date(lastRefreshTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
           </Text>
         </View>
-        
-        {/* NEW: Refresh Icon (only show when refresh is available) */}
+
         {dataStale && (
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={onRefresh}
-          >
+          <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
             <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         )}
@@ -293,8 +401,8 @@ useEffect(() => {
       <ScrollView
         style={styles.scrollView}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             colors={[COLORS.primary]}
             tintColor={COLORS.primary}
@@ -302,32 +410,20 @@ useEffect(() => {
         }
       >
         {jobs.length === 0 && !loading ? (
-  <View style={styles.emptyState}>
-    <Text style={styles.emptyTitle}>
-      {jobs === null || jobs === undefined ? 'Loading...' : 'No jobs posted yet'}
-    </Text>
-    <Text style={styles.emptyText}>
-      {jobs === null || jobs === undefined 
-        ? 'Loading your jobs...'
-        : 'Post your first job to find workers for your tasks.'
-      }
-    </Text>
-    
-    {/* Only show the button when we're sure there are no jobs */}
-    {(jobs !== null && jobs !== undefined && jobs.length === 0) && (
-      <Button
-        title="Post Your First Job"
-        onPress={() => navigation.navigate('Post Job')}
-        style={{ marginTop: SIZES.margin }}
-      />
-    )}
-  </View>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No jobs posted yet</Text>
+            <Text style={styles.emptyText}>
+              Post your first job to find workers for your tasks.
+            </Text>
+            <Button
+              title="Post Your First Job"
+              onPress={() => navigation.navigate('Post Job')}
+              style={{ marginTop: SIZES.margin }}
+            />
+          </View>
         ) : (
           jobs.map((job) => (
-            <View
-              key={job.id}
-              style={styles.jobCard}
-            >
+            <View key={job.id} style={styles.jobCard}>
               {/* Job Header */}
               <View style={styles.cardHeader}>
                 <View style={styles.headerLeft}>
@@ -336,9 +432,8 @@ useEffect(() => {
                     {job.category} • {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
                   </Text>
                 </View>
-                
-                {/* Magnifying Glass Icon for Job Details */}
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.detailsButton}
                   onPress={() => handleViewJobDetails(job)}
                 >
@@ -346,7 +441,6 @@ useEffect(() => {
                 </TouchableOpacity>
               </View>
 
-              {/* Job Details */}
               <Text style={styles.jobDescription} numberOfLines={2}>
                 {job.description}
               </Text>
@@ -376,6 +470,62 @@ useEffect(() => {
           ))
         )}
       </ScrollView>
+
+      {/* Finalization Rating Modal */}
+      <Modal visible={showFinalizeModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rate & Finalize Job ⭐</Text>
+            <Text style={styles.modalSubtitle}>
+              {jobToFinalize?.job_reference} — {jobToFinalize?.category}{'\n'}
+              This job's schedule has ended. Please rate the worker to finalize.
+            </Text>
+
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => setSelectedRating(star)}
+                  style={styles.starButton}
+                >
+                  <Ionicons
+                    name={star <= selectedRating ? 'star' : 'star-outline'}
+                    size={40}
+                    color={star <= selectedRating ? '#f59e0b' : COLORS.gray400}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {selectedRating > 0 && (
+              <Text style={styles.ratingLabel}>{getRatingLabel(selectedRating)}</Text>
+            )}
+
+            <Text style={styles.modalWarning}>
+              ⚠️ This cannot be undone once confirmed.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <Button
+                title="Later"
+                onPress={() => {
+                  setShowFinalizeModal(false);
+                  setJobToFinalize(null);
+                }}
+                variant="outline"
+                style={[styles.modalButton, { flex: 1, marginRight: 8 }]}
+                disabled={finalizing}
+              />
+              <Button
+                title={finalizing ? "Finalizing..." : "Confirm ✅"}
+                onPress={handleConfirmFinalize}
+                style={[styles.modalButton, { flex: 1, marginLeft: 8 }]}
+                disabled={finalizing || selectedRating === 0}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -460,9 +610,6 @@ const styles = {
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  headerLeft: {
-    flex: 1,
-  },
   jobReference: {
     fontSize: SIZES.medium,
     fontWeight: 'bold',
@@ -514,5 +661,63 @@ const styles = {
   },
   applicantsButton: {
     flex: 1,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIZES.padding,
+  },
+  modalCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radius * 2,
+    padding: SIZES.padding * 1.5,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: SIZES.large,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: SIZES.small,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  starButton: {
+    padding: 8,
+  },
+  ratingLabel: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#f59e0b',
+    marginBottom: 16,
+  },
+  modalWarning: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray500,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  modalButton: {
+    minHeight: 44,
   },
 };
