@@ -33,12 +33,14 @@ export default function EditJobScreen() {
     start_time: '',
     end_time: '',
     duration_hours: '',
+    utc_offset: -new Date().getTimezoneOffset(),
     budget: '',
   });
 
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [currency, setCurrency] = useState({ symbol: 'R', code: 'ZAR' });
 
   // Load job data for editing or reposting
   useEffect(() => {
@@ -110,6 +112,10 @@ export default function EditJobScreen() {
     });
   };
 
+  const handleCurrencyChange = (detectedCurrency) => {
+  setCurrency(detectedCurrency);
+};
+
   const validateForm = () => {
     if (!formData.category) {
       Alert.alert('Missing Category', 'Please select a job category');
@@ -177,22 +183,23 @@ export default function EditJobScreen() {
       const jobReference = `${prefix}${suffix}`;
 
       const jobData = {
-        job_reference: jobReference,
-        employer_id: user.id,
-        category: formData.category,
-        description: formData.description,
-        location_city: formData.location_city,
-        location_suburb: formData.location_suburb,
-        address_text: `${formData.location_suburb}, ${formData.location_city}`,
-        scheduled_date: formData.scheduled_date,
-        time_from: formData.start_time,
-        time_to: formData.end_time,
-        duration_hours: parseFloat(formData.duration_hours) || 0,
-        budget: parseFloat(formData.budget) || 0,
-        budget_currency: 'ZAR',
-        status: 'open',
-        applicant_count: 0,
-      };
+  job_reference: jobReference,
+  employer_id: user.id,
+  category: formData.category,
+  description: formData.description,
+  location_city: formData.location_city,
+  location_suburb: formData.location_suburb,
+  address_text: `${formData.location_suburb}, ${formData.location_city}`,
+  scheduled_date: formData.scheduled_date,
+  time_from: formData.start_time,
+  time_to: formData.end_time,
+  utc_offset: formData.utc_offset,  // ADD THIS LINE
+  duration_hours: parseFloat(formData.duration_hours) || 0,
+  budget: parseFloat(formData.budget) || 0,
+  budget_currency: currency.code,
+  status: 'open',
+  applicant_count: 0,
+};
 
       console.log('📤 Reposting job as new listing:', jobData);
 
@@ -226,19 +233,23 @@ export default function EditJobScreen() {
   const handleUpdateJob = async () => {
     try {
       const jobData = {
-        category: formData.category,
-        description: formData.description,
-        location_city: formData.location_city,
-        location_suburb: formData.location_suburb,
-        address_text: `${formData.location_suburb}, ${formData.location_city}`,
-        scheduled_date: formData.scheduled_date,
-        time_from: formData.start_time,
-        time_to: formData.end_time,
-        duration_hours: parseFloat(formData.duration_hours) || 0,
-        budget: parseFloat(formData.budget) || 0,
-        budget_currency: 'ZAR',
-        updated_at: new Date().toISOString(),
-      };
+  job_reference: jobReference,
+  employer_id: user.id,
+  category: formData.category,
+  description: formData.description,
+  location_city: formData.location_city,
+  location_suburb: formData.location_suburb,
+  address_text: `${formData.location_suburb}, ${formData.location_city}`,
+  scheduled_date: formData.scheduled_date,
+  time_from: formData.start_time,
+  time_to: formData.end_time,
+  utc_offset: formData.utc_offset,  // ADD THIS LINE
+  duration_hours: parseFloat(formData.duration_hours) || 0,
+  budget: parseFloat(formData.budget) || 0,
+  budget_currency: currency.code,
+  status: 'open',
+  applicant_count: 0,
+};
 
       console.log('📤 Updating job in Supabase:', jobData);
 
@@ -341,9 +352,10 @@ export default function EditJobScreen() {
         />
 
         <JobBudgetField
-          value={formData.budget}
-          onChange={(value) => updateField('budget', value)}
-        />
+  value={formData.budget}
+  onChange={(value) => updateField('budget', value)}
+  onCurrencyChange={handleCurrencyChange}
+/>
 
         <Button
           title={repost ? "Preview & Repost Job" : "Preview & Update Job"}
