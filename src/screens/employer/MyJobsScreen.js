@@ -255,24 +255,6 @@ export default function MyJobsScreen() {
 
       if (ratingError) throw ratingError;
 
-      // Update worker's average rating
-      const { data: ratingData } = await supabase
-        .from('ratings')
-        .select('rating')
-        .eq('worker_id', jobToFinalize.worker_id);
-
-      if (ratingData) {
-        const totalRatings = ratingData.length;
-        const avgRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
-        await supabase
-          .from('profiles')
-          .update({
-            avg_rating: Math.round(avgRating * 100) / 100,
-            total_ratings: totalRatings
-          })
-          .eq('id', jobToFinalize.worker_id);
-      }
-
       // Mark job as completed
       const { error: jobError } = await supabase
         .from('jobs')

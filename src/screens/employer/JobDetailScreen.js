@@ -27,12 +27,12 @@ export default function JobDetailScreen() {
   const [selectedRating, setSelectedRating] = useState(0);
   const [finalizing, setFinalizing] = useState(false);
   const [isJobReadyToFinalize, setIsJobReadyToFinalize] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     fetchJobDetails();
   }, [jobId]);
 
-  // Check if job is ready to finalize whenever job data changes
   useEffect(() => {
     if (job) {
       setIsJobReadyToFinalize(checkIfReadyToFinalize(job));
@@ -41,18 +41,13 @@ export default function JobDetailScreen() {
 
   const checkIfReadyToFinalize = (jobData) => {
     if (jobData.status !== 'active') return false;
-
-    // Check if scheduled time has passed
     const now = new Date();
-    const jobDate = jobData.scheduled_date; // e.g. "2026-02-25"
-    const jobTimeTo = jobData.time_to;      // e.g. "12:00:00"
-
+    const jobDate = jobData.scheduled_date;
+    const jobTimeTo = jobData.time_to;
     if (!jobDate || !jobTimeTo) return false;
-
     const [hours, minutes] = jobTimeTo.split(':').map(Number);
     const jobEndDateTime = new Date(jobDate);
     jobEndDateTime.setHours(hours, minutes, 0, 0);
-
     return now >= jobEndDateTime;
   };
 
@@ -117,6 +112,88 @@ export default function JobDetailScreen() {
     }
   };
 
+  const canCancelJob = () => {
+    return job.status === 'open' ||
+      (job.status === 'hired' && !job.worker_confirmed);
+  };
+
+  const handleCancelJob = () => {
+    if (!canCancelJob()) {
+      Alert.alert(
+        'Cannot Cancel',
+        'This job cannot be cancelled once a worker has confirmed their hire.'
+      );
+      return;
+    }
+
+    const message = job.status === 'open'
+      ? 'Are you sure you want to cancel this job? Any pending applications will be declined.'
+      : 'Are you sure you want to cancel this job? The hired worker will be notified.';
+
+    Alert.alert(
+      'Cancel Job',
+      message,
+      [
+        { text: 'Keep Job', style: 'cancel' },
+        {
+          text: 'Cancel Job',
+          style: 'destructive',
+          onPress: () => processCancelJob()
+        }
+      ]
+    );
+  };
+
+  const processCancelJob = async () => {
+    setCancelling(true);
+
+    try {
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ status: 'cancelled' })
+        .eq('id', job.id);
+
+      if (jobError) throw jobError;
+
+      // Decline all open/hired applications for this job
+      const { error: appsError } = await supabase
+        .from('applications')
+        .update({
+          status: 'declined',
+          auto_declined_reason: 'Job was cancelled by employer'
+        })
+        .eq('job_id', job.id)
+        .in('status', ['applied', 'hired']);
+
+      if (appsError) {
+        console.error('⚠️ Error declining applications:', appsError);
+      }
+
+      // Update local storage
+      const localJobs = await storageService.getMyJobs();
+      if (localJobs) {
+        const updatedJobs = localJobs.map(j =>
+          j.id === job.id ? { ...j, status: 'cancelled' } : j
+        );
+        await storageService.setMyJobs(updatedJobs);
+      }
+
+      setJob(prev => ({ ...prev, status: 'cancelled' }));
+
+      Alert.alert(
+        'Job Cancelled',
+        'This job has been cancelled and all applications have been declined.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+
+    } catch (error) {
+      console.error('Error cancelling job:', error);
+      Alert.alert('Error', 'Failed to cancel job. Please try again.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleFinalizePress = () => {
     setSelectedRating(0);
     setShowRatingModal(true);
@@ -134,7 +211,6 @@ export default function JobDetailScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Save the rating
       const { error: ratingError } = await supabase
         .from('ratings')
         .insert([{
@@ -146,26 +222,6 @@ export default function JobDetailScreen() {
 
       if (ratingError) throw ratingError;
 
-      // Update worker's average rating on their profile
-      const { data: ratingData, error: avgError } = await supabase
-        .from('ratings')
-        .select('rating')
-        .eq('worker_id', job.worker_id);
-
-      if (!avgError && ratingData) {
-        const totalRatings = ratingData.length;
-        const avgRating = ratingData.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
-
-        await supabase
-          .from('profiles')
-          .update({
-            avg_rating: Math.round(avgRating * 100) / 100,
-            total_ratings: totalRatings
-          })
-          .eq('id', job.worker_id);
-      }
-
-      // Mark job as completed
       const { error: jobError } = await supabase
         .from('jobs')
         .update({ status: 'completed' })
@@ -173,7 +229,6 @@ export default function JobDetailScreen() {
 
       if (jobError) throw jobError;
 
-      // Update local storage
       const localJobs = await storageService.getMyJobs();
       const updatedJobs = localJobs?.map(j =>
         j.id === job.id ? { ...j, status: 'completed' } : j
@@ -325,10 +380,10 @@ export default function JobDetailScreen() {
               </View>
 
               {(job.status === 'open' && !job.worker_id) && (
-  <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
-    <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
-  </TouchableOpacity>
-)}
+                <TouchableOpacity style={styles.editButton} onPress={handleEdit}>
+                  <Ionicons name="pencil-outline" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={styles.detailRow}>
@@ -369,6 +424,25 @@ export default function JobDetailScreen() {
             </View>
           </View>
 
+          {/* Cancel Job Card - shown for open or hired but unconfirmed jobs */}
+          {canCancelJob() && (
+            <View style={styles.cancelCard}>
+              <Text style={styles.cancelTitle}>⚠️ Cancel this Job?</Text>
+              <Text style={styles.cancelText}>
+                {job.status === 'open'
+                  ? 'If circumstances have changed, you can cancel this job. All pending applications will be declined.'
+                  : 'The worker has not yet confirmed. You may still cancel this job if needed.'
+                }
+              </Text>
+              <Button
+                title={cancelling ? "Cancelling..." : "Cancel Job"}
+                onPress={handleCancelJob}
+                style={styles.cancelButton}
+                disabled={cancelling}
+              />
+            </View>
+          )}
+
           {/* Finalize Job Card - only shown when ready */}
           {isJobReadyToFinalize && (
             <View style={styles.finalizeCard}>
@@ -390,6 +464,16 @@ export default function JobDetailScreen() {
               <Text style={styles.completedTitle}>✅ Job Finalized</Text>
               <Text style={styles.completedText}>
                 This job has been completed and the worker has been rated.
+              </Text>
+            </View>
+          )}
+
+          {/* Cancelled status card */}
+          {job.status === 'cancelled' && (
+            <View style={styles.cancelledCard}>
+              <Text style={styles.cancelledTitle}>❌ Job Cancelled</Text>
+              <Text style={styles.cancelledText}>
+                This job has been cancelled and all applications have been declined.
               </Text>
             </View>
           )}
@@ -598,7 +682,49 @@ const styles = {
     fontWeight: 'bold',
     flex: 1,
   },
-  // Finalize card
+  cancelCard: {
+    margin: SIZES.margin,
+    padding: SIZES.padding,
+    backgroundColor: '#fff1f2',
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  cancelTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#991b1b',
+    marginBottom: 8,
+  },
+  cancelText: {
+    fontSize: SIZES.small,
+    color: '#7f1d1d',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  cancelButton: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  cancelledCard: {
+    margin: SIZES.margin,
+    padding: SIZES.padding,
+    backgroundColor: '#fee2e2',
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  cancelledTitle: {
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    color: '#991b1b',
+    marginBottom: 8,
+  },
+  cancelledText: {
+    fontSize: SIZES.small,
+    color: '#7f1d1d',
+    lineHeight: 20,
+  },
   finalizeCard: {
     margin: SIZES.margin,
     padding: SIZES.padding,
@@ -622,7 +748,6 @@ const styles = {
   finalizeButton: {
     backgroundColor: '#f59e0b',
   },
-  // Completed card
   completedCard: {
     margin: SIZES.margin,
     padding: SIZES.padding,
@@ -679,7 +804,6 @@ const styles = {
     borderTopWidth: 1,
     borderTopColor: COLORS.gray200,
   },
-  // Rating Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
