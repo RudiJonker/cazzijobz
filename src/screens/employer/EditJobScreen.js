@@ -17,12 +17,13 @@ import JobDateTimeField from '../jobs/post/components/JobDateTimeField';
 import JobBudgetField from '../jobs/post/components/JobBudgetField';
 import { supabase } from '../../utils/supabaseClient';
 import { storageService } from '../../utils/storageService';
+import { formatLocalTime } from '../../utils/timeUtils';
 
 export default function EditJobScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { jobId } = route.params;
-  
+  const { jobId, repost = false } = route.params;
+
   const [formData, setFormData] = useState({
     category: '',
     description: '',
@@ -39,20 +40,18 @@ export default function EditJobScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Load job data for editing
+  // Load job data for editing or reposting
   useEffect(() => {
     const loadJobData = async () => {
       try {
-        // Try local storage first
         const localJobs = await storageService.getMyJobs();
-        const jobToEdit = localJobs.find(job => job.id === jobId);
-        
+        const jobToEdit = localJobs?.find(job => job.id === jobId);
+
         if (jobToEdit) {
           populateForm(jobToEdit);
           setLoading(false);
         }
 
-        // Then verify with Supabase
         const { data, error } = await supabase
           .from('jobs')
           .select('*')
@@ -66,8 +65,8 @@ export default function EditJobScreen() {
         }
 
       } catch (error) {
-        console.error('❌ Error loading job for editing:', error);
-        Alert.alert('Error', 'Failed to load job details for editing');
+        console.error('❌ Error loading job:', error);
+        Alert.alert('Error', 'Failed to load job details');
       } finally {
         setLoading(false);
       }
@@ -82,25 +81,23 @@ export default function EditJobScreen() {
       description: job.description || '',
       location_city: job.location_city || '',
       location_suburb: job.location_suburb || '',
-      scheduled_date: job.scheduled_date || '',
-      start_time: job.time_from || '',
-      end_time: job.time_to || '',
-      duration_hours: job.duration_hours?.toString() || '',
+      // Clear date and time when reposting - employer must pick new schedule
+      scheduled_date: repost ? '' : (job.scheduled_date || ''),
+      start_time: repost ? '' : (job.time_from || ''),
+      end_time: repost ? '' : (job.time_to || ''),
+      duration_hours: repost ? '' : (job.duration_hours?.toString() || ''),
       budget: job.budget?.toString() || '',
     });
   };
 
-  // Basic field update function
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Time field update with auto-calculation
   const updateTimeField = (field, value) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
-      
-      // Auto-calculate hours if both times are set
+
       if (newData.start_time && newData.end_time) {
         const start = new Date(`2000-01-01 ${newData.start_time}`);
         const end = new Date(`2000-01-01 ${newData.end_time}`);
@@ -108,12 +105,11 @@ export default function EditJobScreen() {
         const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
         newData.duration_hours = hours > 0 ? hours : '';
       }
-      
+
       return newData;
     });
   };
 
-  // Simple validation
   const validateForm = () => {
     if (!formData.category) {
       Alert.alert('Missing Category', 'Please select a job category');
@@ -128,7 +124,7 @@ export default function EditJobScreen() {
       return false;
     }
     if (!formData.scheduled_date) {
-      Alert.alert('Missing Date', 'Please select a date');
+      Alert.alert('Missing Date', 'Please select a date for the new schedule');
       return false;
     }
     if (!formData.start_time || !formData.end_time) {
@@ -148,11 +144,86 @@ export default function EditJobScreen() {
     }
   };
 
-  const handleUpdateJob = async () => {
+  const handleSubmit = async () => {
     if (isSubmitting) return;
-    
     setIsSubmitting(true);
-    
+
+    try {
+      if (repost) {
+        await handleRepostJob();
+      } else {
+        await handleUpdateJob();
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Create a brand new job from the expired job's details
+  const handleRepostJob = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Generate new job reference
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const nums = '0123456789';
+      const prefix = Array.from({ length: 2 }, () =>
+        chars[Math.floor(Math.random() * chars.length)]
+      ).join('');
+      const suffix = Array.from({ length: 5 }, () =>
+        nums[Math.floor(Math.random() * nums.length)]
+      ).join('');
+      const jobReference = `${prefix}${suffix}`;
+
+      const jobData = {
+        job_reference: jobReference,
+        employer_id: user.id,
+        category: formData.category,
+        description: formData.description,
+        location_city: formData.location_city,
+        location_suburb: formData.location_suburb,
+        address_text: `${formData.location_suburb}, ${formData.location_city}`,
+        scheduled_date: formData.scheduled_date,
+        time_from: formData.start_time,
+        time_to: formData.end_time,
+        duration_hours: parseFloat(formData.duration_hours) || 0,
+        budget: parseFloat(formData.budget) || 0,
+        budget_currency: 'ZAR',
+        status: 'open',
+        applicant_count: 0,
+      };
+
+      console.log('📤 Reposting job as new listing:', jobData);
+
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert([jobData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Job reposted successfully:', data.job_reference);
+
+      // Add new job to local storage
+      const localJobs = await storageService.getMyJobs() || [];
+      await storageService.setMyJobs([data, ...localJobs]);
+
+      setShowConfirmation(false);
+      Alert.alert(
+        'Job Reposted! ✅',
+        `Your job has been reposted as ${data.job_reference} and is now open for applications.`,
+        [{ text: 'OK', onPress: () => navigation.navigate('Main', { screen: 'My Jobs' }) }]
+      );
+
+    } catch (error) {
+      console.error('💥 Repost error:', error);
+      Alert.alert('Repost Failed', error.message || 'Could not repost your job. Please try again.');
+    }
+  };
+
+  const handleUpdateJob = async () => {
     try {
       const jobData = {
         category: formData.category,
@@ -169,9 +240,8 @@ export default function EditJobScreen() {
         updated_at: new Date().toISOString(),
       };
 
-      console.log('📤 TYPE A CALL - Updating job in Supabase:', jobData);
+      console.log('📤 Updating job in Supabase:', jobData);
 
-      // Update in Supabase
       const { data, error } = await supabase
         .from('jobs')
         .update(jobData)
@@ -181,36 +251,30 @@ export default function EditJobScreen() {
 
       if (error) throw error;
 
-      console.log('✅ Job updated successfully in Supabase:', data.id);
+      console.log('✅ Job updated successfully:', data.id);
 
-      // Update local storage
       const localJobs = await storageService.getMyJobs();
-      const updatedJobs = localJobs.map(job => 
+      const updatedJobs = localJobs.map(job =>
         job.id === jobId ? { ...job, ...jobData } : job
       );
       await storageService.setMyJobs(updatedJobs);
-      console.log('💾 Job updated in local storage');
 
-      // Success
       setShowConfirmation(false);
       Alert.alert('Success', 'Job updated successfully!');
-      navigation.goBack(); // Go back to JobDetailScreen
-      
+      navigation.goBack();
+
     } catch (error) {
       console.error('💥 Job update error:', error);
-      Alert.alert(
-        'Update Failed', 
-        error.message || 'Could not update your job. Please check your connection and try again.'
-      );
-    } finally {
-      setIsSubmitting(false);
+      Alert.alert('Update Failed', error.message || 'Could not update your job. Please try again.');
     }
   };
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading job for editing...</Text>
+        <Text style={styles.loadingText}>
+          {repost ? 'Loading job for reposting...' : 'Loading job for editing...'}
+        </Text>
       </View>
     );
   }
@@ -219,18 +283,30 @@ export default function EditJobScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>
       <View style={{ padding: SIZES.padding, paddingBottom: 80 }}>
         {/* Header */}
-        <Text style={styles.screenTitle}>Edit Job</Text>
+        <Text style={styles.screenTitle}>
+          {repost ? 'Repost Job' : 'Edit Job'}
+        </Text>
         <Text style={styles.requiredNote}>
-          Update the job details below
+          {repost
+            ? 'All details have been carried over. Please select a new date and time.'
+            : 'Update the job details below'
+          }
         </Text>
 
-        {/* Reuse all the field components from PostJobScreen */}
+        {/* Repost notice banner */}
+        {repost && (
+          <View style={styles.repostBanner}>
+            <Text style={styles.repostBannerText}>
+              📅 A new date and time is required to repost this job.
+            </Text>
+          </View>
+        )}
+
         <JobCategoryField
           value={formData.category}
           onChange={(value) => updateField('category', value)}
         />
 
-        {/* Description */}
         <View style={{ marginBottom: SIZES.margin }}>
           <Text style={styles.fieldLabel}>Job Description</Text>
           <TextInput
@@ -269,9 +345,8 @@ export default function EditJobScreen() {
           onChange={(value) => updateField('budget', value)}
         />
 
-        {/* Update Button */}
         <Button
-          title="Preview & Update Job"
+          title={repost ? "Preview & Repost Job" : "Preview & Update Job"}
           onPress={handlePreview}
           style={{ marginTop: SIZES.margin }}
           loading={isSubmitting}
@@ -281,8 +356,10 @@ export default function EditJobScreen() {
         <Modal visible={showConfirmation} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Confirm Job Updates</Text>
-              
+              <Text style={styles.modalTitle}>
+                {repost ? 'Confirm Repost' : 'Confirm Job Updates'}
+              </Text>
+
               <View style={styles.previewSection}>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Category: </Text>
@@ -297,9 +374,9 @@ export default function EditJobScreen() {
                   {formData.scheduled_date}
                 </Text>
                 <Text style={styles.previewText}>
-                  <Text style={styles.previewLabel}>Time: </Text>
-                  {formData.start_time} - {formData.end_time}
-                </Text>
+  <Text style={styles.previewLabel}>Time: </Text>
+  {formatLocalTime(formData.start_time, formData.scheduled_date, formData.utc_offset)} - {formatLocalTime(formData.end_time, formData.scheduled_date, formData.utc_offset)}
+</Text>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Duration: </Text>
                   {formData.duration_hours ? `${formData.duration_hours} hours` : '-- hours'}
@@ -310,15 +387,21 @@ export default function EditJobScreen() {
                 </Text>
               </View>
 
+              {repost && (
+                <Text style={styles.repostNote}>
+                  This will create a new job listing. The expired job will remain in your history.
+                </Text>
+              )}
+
               <View style={styles.buttonRow}>
                 <Button
-                  title="Cancel"
+                  title="Back"
                   onPress={() => setShowConfirmation(false)}
                   style={[styles.button, { backgroundColor: COLORS.gray500 }]}
                 />
                 <Button
-                  title={isSubmitting ? "Updating..." : "Update"}
-                  onPress={handleUpdateJob}
+                  title={isSubmitting ? 'Posting...' : repost ? 'Repost' : 'Update'}
+                  onPress={handleSubmit}
                   style={styles.button}
                   loading={isSubmitting}
                 />
@@ -352,6 +435,27 @@ const styles = {
     textAlign: 'center',
     marginBottom: SIZES.margin,
     fontStyle: 'italic',
+  },
+  repostBanner: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    borderRadius: SIZES.radius,
+    padding: 12,
+    marginBottom: SIZES.margin,
+  },
+  repostBannerText: {
+    fontSize: SIZES.small,
+    color: '#1e40af',
+    textAlign: 'center',
+  },
+  repostNote: {
+    fontSize: SIZES.xSmall,
+    color: COLORS.gray500,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: SIZES.margin,
+    lineHeight: 18,
   },
   fieldLabel: {
     fontSize: SIZES.small,

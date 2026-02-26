@@ -17,6 +17,7 @@ import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Button } from '../../components/common/Button';
 import { jobService } from '../../utils/supabaseService';
+import { formatLocalTime, formatDisplayDate } from '../../utils/timeUtils';
 
 export default function MyJobsScreen() {
   const navigation = useNavigation();
@@ -325,19 +326,6 @@ export default function MyJobsScreen() {
     }
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hour = parseInt(hours);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
-    } catch (error) {
-      return timeString;
-    }
-  };
-
   const getStatusColor = (status) => {
     const statusColors = {
       'open': '#10b981',
@@ -434,7 +422,7 @@ export default function MyJobsScreen() {
               <View style={styles.timeRow}>
                 <Text style={styles.date}>{formatDate(job.scheduled_date)}</Text>
                 <Text style={styles.time}>
-                  {formatTime(job.time_from)} - {formatTime(job.time_to)}
+                  {formatLocalTime(job.time_from, job.scheduled_date, job.utc_offset)} - {formatLocalTime(job.time_to, job.scheduled_date, job.utc_offset)}
                 </Text>
               </View>
 

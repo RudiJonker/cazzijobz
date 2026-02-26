@@ -15,6 +15,7 @@ import { supabase } from '../../utils/supabaseClient';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Button } from '../../components/common/Button';
+import { formatLocalTime, formatDisplayDate } from '../../utils/timeUtils';
 
 export default function JobDetailScreen() {
   const route = useRoute();
@@ -266,19 +267,6 @@ export default function JobDetailScreen() {
     }
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hour = parseInt(hours);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
-    } catch (error) {
-      return timeString;
-    }
-  };
-
   const getStatusDisplay = (status) => {
     const statusMap = {
       'open': 'Open',
@@ -409,7 +397,7 @@ export default function JobDetailScreen() {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Time:</Text>
               <Text style={styles.detailValue}>
-                {formatTime(job.time_from)} - {formatTime(job.time_to)}
+                {formatLocalTime(job.time_from, job.scheduled_date, job.utc_offset)} - {formatLocalTime(job.time_to, job.scheduled_date, job.utc_offset)}
               </Text>
             </View>
 
@@ -477,6 +465,25 @@ export default function JobDetailScreen() {
               </Text>
             </View>
           )}
+
+          {/* Expired Job Card - no applications received */}
+{job.status === 'expired' && (
+  <View style={styles.expiredCard}>
+    <Text style={styles.expiredTitle}>⏰ Job Expired</Text>
+    <Text style={styles.expiredText}>
+      This job expired without receiving any confirmed applications.
+      Would you like to repost it with a new date and time?
+    </Text>
+    <Button
+      title="Repost Job"
+      onPress={() => navigation.navigate('EditJob', {
+        jobId: job.id,
+        repost: true
+      })}
+      style={styles.repostButton}
+    />
+  </View>
+)}
 
           {/* Info Card */}
           <View style={styles.infoCard}>
@@ -855,4 +862,29 @@ const styles = {
   modalButton: {
     minHeight: 44,
   },
+
+  expiredCard: {
+  margin: SIZES.margin,
+  padding: SIZES.padding,
+  backgroundColor: '#f0f9ff',
+  borderRadius: SIZES.radius,
+  borderWidth: 1,
+  borderColor: '#3b82f6',
+},
+expiredTitle: {
+  fontSize: SIZES.medium,
+  fontWeight: 'bold',
+  color: '#1e40af',
+  marginBottom: 8,
+},
+expiredText: {
+  fontSize: SIZES.small,
+  color: '#1e3a8a',
+  marginBottom: 12,
+  lineHeight: 20,
+},
+repostButton: {
+  backgroundColor: '#3b82f6',
+  borderColor: '#3b82f6',
+},
 };

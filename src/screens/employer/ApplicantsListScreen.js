@@ -16,6 +16,7 @@ import { useSupabase } from '../../hooks/useSupabase';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Button } from '../../components/common/Button';
+import { formatLocalTime, formatDisplayDate } from '../../utils/timeUtils';
 
 export default function ApplicantsListScreen() {
   const route = useRoute();
@@ -249,19 +250,6 @@ export default function ApplicantsListScreen() {
     }
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hour = parseInt(hours);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
-    } catch (error) {
-      return timeString;
-    }
-  };
-
   const getApplicationStatusColor = (status, workerConfirmed = false) => {
     const colors = {
       'applied': '#3b82f6',
@@ -354,7 +342,7 @@ export default function ApplicantsListScreen() {
           <View style={styles.jobSummary}>
             <Text style={styles.jobTitle}>{job.category}</Text>
             <Text style={styles.jobDetails}>
-              {formatDate(job.scheduled_date)} • {formatTime(job.time_from)} - {formatTime(job.time_to)}
+              {formatDate(job.scheduled_date)} • {formatLocalTime(job.time_from, job.scheduled_date, job.utc_offset)} - {formatLocalTime(job.time_to, job.scheduled_date, job.utc_offset)}
             </Text>
             <Text style={styles.jobBudget}>
               {job.budget_currency} {job.budget}

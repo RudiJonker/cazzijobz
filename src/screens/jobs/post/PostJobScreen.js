@@ -1,13 +1,13 @@
-// src/screens/jobs/post/PostJobScreen.js - UPDATED WITH CURRENCY DETECTION
+// src/screens/jobs/post/PostJobScreen.js
 import React, { useState } from 'react';
-import { 
-  View, 
-  ScrollView, 
-  Text, 
+import {
+  View,
+  ScrollView,
+  Text,
   TextInput,
-  TouchableOpacity, 
+  TouchableOpacity,
   Alert,
-  Modal 
+  Modal
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Button } from '../../../components/common/Button';
@@ -31,44 +31,39 @@ export default function PostJobScreen() {
     end_time: '',
     duration_hours: '',
     budget: '',
+    utc_offset: -new Date().getTimezoneOffset(), // Device UTC offset in minutes
   });
-  
-  // NEW: Currency state to capture detected currency
-  const [currency, setCurrency] = useState({ symbol: 'R', code: 'ZAR' });
 
+  const [currency, setCurrency] = useState({ symbol: 'R', code: 'ZAR' });
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Basic field update function
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Time field update with auto-calculation
   const updateTimeField = (field, value) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
-      
-      // Auto-calculate hours if both times are set
+
+      // Auto-calculate duration from UTC times
       if (newData.start_time && newData.end_time) {
-        const start = new Date(`2000-01-01 ${newData.start_time}`);
-        const end = new Date(`2000-01-01 ${newData.end_time}`);
+        const start = new Date(`2000-01-01T${newData.start_time}:00Z`);
+        const end = new Date(`2000-01-01T${newData.end_time}:00Z`);
         const diffMs = end - start;
         const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
         newData.duration_hours = hours > 0 ? hours : '';
       }
-      
+
       return newData;
     });
   };
 
-  // NEW: Handle currency detection from JobBudgetField
   const handleCurrencyChange = (detectedCurrency) => {
     console.log('💰 Currency detected:', detectedCurrency);
     setCurrency(detectedCurrency);
   };
 
-  // Simple validation
   const validateForm = () => {
     if (!formData.category) {
       Alert.alert('Missing Category', 'Please select a job category');
@@ -103,149 +98,144 @@ export default function PostJobScreen() {
     }
   };
 
+  // Convert stored UTC time to local display time for preview
+  const utcToLocalDisplay = (utcTimeStr) => {
+    if (!utcTimeStr || !formData.scheduled_date) return utcTimeStr;
+    try {
+      const [hours, minutes] = utcTimeStr.split(':').map(Number);
+      const utcDate = new Date(formData.scheduled_date);
+      utcDate.setUTCHours(hours, minutes, 0, 0);
+      const localHours = utcDate.getHours().toString().padStart(2, '0');
+      const localMinutes = utcDate.getMinutes().toString().padStart(2, '0');
+      const hour = parseInt(localHours);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour % 12 || 12;
+      return `${displayHour}:${localMinutes} ${ampm}`;
+    } catch {
+      return utcTimeStr;
+    }
+  };
+
   const handleFinalSubmit = async () => {
-  if (isSubmitting) return;
-  
-  setIsSubmitting(true);
-  
-  try {
-    // Get current user directly from Supabase auth
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      console.error('❌ User auth error:', userError);
-      Alert.alert('Error', 'You must be logged in to post jobs');
-      return;
-    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    console.log('👤 User ID:', user.id);
-    console.log('💰 Using currency:', currency);
-
-    const jobData = {
-      employer_id: user.id,
-      description: formData.description,
-      category: formData.category,
-      location_city: formData.location_city,
-      location_suburb: formData.location_suburb,
-      address_text: `${formData.location_suburb}, ${formData.location_city}`,
-      scheduled_date: formData.scheduled_date,
-      time_from: formData.start_time,
-      time_to: formData.end_time,
-      duration_hours: parseFloat(formData.duration_hours) || 0,
-      budget: parseFloat(formData.budget) || 0,
-      budget_currency: currency.code,
-      status: 'open',
-      applicant_count: 0,
-    };
-
-    console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
-
-    const { data, error } = await supabase
-      .from('jobs')
-      .insert([jobData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ Supabase error:', error);
-      throw error;
-    }
-
-    console.log('✅ REAL SUCCESS - Job saved to database. ID:', data.id, 'Reference:', data.job_reference);
-    console.log('💰 Currency saved:', data.budget_currency);
-
-    // FIXED: Save job to employer's local storage PROPERLY
     try {
-      // Get existing employer jobs from storage
-      const existingJobs = await storageService.getMyJobs() || [];
-      console.log('💾 Existing jobs in storage:', existingJobs.length);
-      
-      // Add the new job to the beginning of the array
-      const updatedJobs = [data, ...existingJobs];
-      
-      // Save updated jobs array back to storage
-      await storageService.setMyJobs(updatedJobs);
-      
-      console.log('💾 Job saved to employer local storage - total jobs:', updatedJobs.length);
-    } catch (storageError) {
-      console.log('💾 Storage error (non-critical):', storageError.message);
-      // Don't break the flow - Supabase save was successful
-    }
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-    // 🔄 NEW: ALSO refresh available jobs cache for workers
-    try {
-      console.log('🔄 Refreshing available jobs cache for workers...');
-      
-      // Fetch fresh available jobs from Supabase
-      const { data: availableJobs, error: availableError } = await supabase
-        .from('jobs')
-        .select('*')
-        .eq('status', 'open')
-        .order('created_at', { ascending: false });
-
-      if (availableError) {
-        console.log('⚠️ Could not refresh available jobs cache:', availableError.message);
-      } else if (availableJobs) {
-        // Save to available_jobs storage
-        await storageService.setAvailableJobs(availableJobs);
-        console.log('💾 Available jobs cache updated:', availableJobs.length, 'jobs');
+      if (userError || !user) {
+        Alert.alert('Error', 'You must be logged in to post jobs');
+        return;
       }
-    } catch (cacheError) {
-      console.log('⚠️ Available jobs cache refresh failed (non-critical):', cacheError.message);
-      // Don't break the job posting flow
+
+      console.log('👤 User ID:', user.id);
+      console.log('💰 Using currency:', currency);
+
+      const jobData = {
+        employer_id: user.id,
+        description: formData.description,
+        category: formData.category,
+        location_city: formData.location_city,
+        location_suburb: formData.location_suburb,
+        address_text: `${formData.location_suburb}, ${formData.location_city}`,
+        scheduled_date: formData.scheduled_date,
+        time_from: formData.start_time,   // Stored as UTC
+        time_to: formData.end_time,       // Stored as UTC
+        utc_offset: formData.utc_offset,  // Device offset in minutes
+        duration_hours: parseFloat(formData.duration_hours) || 0,
+        budget: parseFloat(formData.budget) || 0,
+        budget_currency: currency.code,
+        status: 'open',
+        applicant_count: 0,
+      };
+
+      console.log('📤 REAL API CALL - Posting to Supabase:', jobData);
+
+      const { data, error } = await supabase
+        .from('jobs')
+        .insert([jobData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('✅ Job saved. ID:', data.id, 'Reference:', data.job_reference);
+      console.log('💰 Currency saved:', data.budget_currency);
+
+      // Save to local storage
+      try {
+        const existingJobs = await storageService.getMyJobs() || [];
+        const updatedJobs = [data, ...existingJobs];
+        await storageService.setMyJobs(updatedJobs);
+        console.log('💾 Job saved to employer local storage - total jobs:', updatedJobs.length);
+      } catch (storageError) {
+        console.log('💾 Storage error (non-critical):', storageError.message);
+      }
+
+      // Refresh available jobs cache for workers
+      try {
+        console.log('🔄 Refreshing available jobs cache for workers...');
+        const { data: availableJobs, error: availableError } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('status', 'open')
+          .order('created_at', { ascending: false });
+
+        if (availableError) {
+          console.log('⚠️ Could not refresh available jobs cache:', availableError.message);
+        } else if (availableJobs) {
+          await storageService.setAvailableJobs(availableJobs);
+          console.log('💾 Available jobs saved to local storage:', availableJobs.length);
+          console.log('💾 Available jobs cache updated:', availableJobs.length, 'jobs');
+        }
+      } catch (cacheError) {
+        console.log('⚠️ Available jobs cache refresh failed (non-critical):', cacheError.message);
+      }
+
+      // Reset form
+      setFormData({
+        category: '',
+        description: '',
+        location_city: '',
+        location_suburb: '',
+        scheduled_date: '',
+        start_time: '',
+        end_time: '',
+        duration_hours: '',
+        budget: '',
+        utc_offset: -new Date().getTimezoneOffset(),
+      });
+
+      setCurrency({ symbol: 'R', code: 'ZAR' });
+      setShowConfirmation(false);
+
+      navigation.navigate('My Jobs', {
+        refresh: true,
+        newJobReference: data.job_reference
+      });
+
+    } catch (error) {
+      console.error('💥 REAL ERROR:', error);
+      Alert.alert(
+        'Posting Failed',
+        error.message || 'Could not post your job. Please check your connection and try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Reset form
-    setFormData({
-      category: '',
-      description: '',
-      location_city: '',
-      location_suburb: '',
-      scheduled_date: '',
-      start_time: '',
-      end_time: '',
-      duration_hours: '',
-      budget: '',
-    });
-
-    // Reset currency to default
-    setCurrency({ symbol: 'R', code: 'ZAR' });
-    
-    setShowConfirmation(false);
-    
-    // Navigate to My Jobs screen
-    navigation.navigate('My Jobs', { 
-      refresh: true,
-      newJobReference: data.job_reference 
-    });
-    
-  } catch (error) {
-    console.error('💥 REAL ERROR:', error);
-    Alert.alert(
-      'Posting Failed', 
-      error.message || 'Could not post your job. Please check your connection and try again.'
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>
       <View style={{ padding: SIZES.padding, paddingBottom: 80 }}>
-        {/* Compact Header */}
         <Text style={styles.screenTitle}>Post a Job</Text>
-        <Text style={styles.requiredNote}>
-          All fields are required
-        </Text>
+        <Text style={styles.requiredNote}>All fields are required</Text>
 
-        {/* Category Field */}
         <JobCategoryField
           value={formData.category}
           onChange={(value) => updateField('category', value)}
         />
 
-        {/* Description */}
         <View style={{ marginBottom: SIZES.margin }}>
           <Text style={styles.fieldLabel}>Job Description</Text>
           <TextInput
@@ -263,15 +253,13 @@ export default function PostJobScreen() {
           </Text>
         </View>
 
-        {/* Location Field - UPDATED: No popup on GPS success */}
         <JobLocationField
           city={formData.location_city}
           suburb={formData.location_suburb}
           onChange={updateField}
-          showSuccessPopup={false} // Disable the success popup
+          showSuccessPopup={false}
         />
 
-        {/* Date & Time Field */}
         <JobDateTimeField
           date={formData.scheduled_date}
           startTime={formData.start_time}
@@ -281,14 +269,12 @@ export default function PostJobScreen() {
           onTimeChange={updateTimeField}
         />
 
-        {/* Budget Field - UPDATED: Added currency callback */}
         <JobBudgetField
           value={formData.budget}
           onChange={(value) => updateField('budget', value)}
-          onCurrencyChange={handleCurrencyChange} // NEW: Currency detection callback
+          onCurrencyChange={handleCurrencyChange}
         />
 
-        {/* Submit Button */}
         <Button
           title="Preview & Post Job"
           onPress={handlePreview}
@@ -296,12 +282,11 @@ export default function PostJobScreen() {
           loading={isSubmitting}
         />
 
-        {/* Simple Confirmation Modal */}
         <Modal visible={showConfirmation} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Confirm Job Details</Text>
-              
+
               <View style={styles.previewSection}>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Category: </Text>
@@ -317,7 +302,7 @@ export default function PostJobScreen() {
                 </Text>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Time: </Text>
-                  {formData.start_time} - {formData.end_time}
+                  {utcToLocalDisplay(formData.start_time)} - {utcToLocalDisplay(formData.end_time)}
                 </Text>
                 <Text style={styles.previewText}>
                   <Text style={styles.previewLabel}>Duration: </Text>
