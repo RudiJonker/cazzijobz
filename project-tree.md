@@ -74,16 +74,15 @@ CAZZIJOBS/
 │       ├── debounce.js
 │       ├── storageService.js
 │       ├── supabaseClient.js
-│       └── supabaseService.js
+│       ├── supabaseService.js
+│       └── timeUtils.js
 ├── .env
 ├── .gitignore
 ├── App.js
 ├── app.json
 ├── babel.config.js
-├── cazzyjobz.zip
 ├── generateTree.js
 ├── index.js
 ├── package-lock.json
 ├── package.json
-├── project-tree.md
-└── ScreenLayouts.png
+└── project-tree.md

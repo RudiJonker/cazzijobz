@@ -263,19 +263,31 @@ export default function WorkerJobsScreen({ navigation }) {
   }, [userCity]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      console.log('🎯 WorkerJobsScreen focused - NO API calls');
+  const unsubscribe = navigation.addListener('focus', async () => {
+    console.log('🎯 WorkerJobsScreen focused - checking application status');
 
-      const now = new Date();
-      const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
+    const now = new Date();
+    const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
 
-      if (isStale) {
-        setDataStale(true);
-        console.log('📱 Worker data may be stale - showing refresh indicator');
+    if (isStale) {
+      setDataStale(true);
+    }
+
+    // Re-check application statuses on focus (lightweight - no job fetch)
+    if (jobs.length > 0) {
+      let currentUser = user;
+      if (!currentUser) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        currentUser = authUser;
       }
-    });
-    return unsubscribe;
-  }, [navigation, lastRefreshTime]);
+      if (currentUser) {
+        const updatedJobs = await addApplicationStatusToJobs(jobs, currentUser.id);
+        setJobs(updatedJobs);
+      }
+    }
+  });
+  return unsubscribe;
+}, [navigation, lastRefreshTime, jobs]);
 
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
