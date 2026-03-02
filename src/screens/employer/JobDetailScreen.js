@@ -41,16 +41,14 @@ export default function JobDetailScreen() {
   }, [job]);
 
   const checkIfReadyToFinalize = (jobData) => {
-    if (jobData.status !== 'active') return false;
-    const now = new Date();
-    const jobDate = jobData.scheduled_date;
-    const jobTimeTo = jobData.time_to;
-    if (!jobDate || !jobTimeTo) return false;
-    const [hours, minutes] = jobTimeTo.split(':').map(Number);
-    const jobEndDateTime = new Date(jobDate);
-    jobEndDateTime.setHours(hours, minutes, 0, 0);
-    return now >= jobEndDateTime;
-  };
+  if (jobData.status !== 'active') return false;
+  const now = new Date();
+  if (!jobData.scheduled_date || !jobData.time_to) return false;
+  const [hours, minutes] = jobData.time_to.split(':').map(Number);
+  const jobEndDateTime = new Date(jobData.scheduled_date);
+  jobEndDateTime.setUTCHours(hours, minutes, 0, 0); // ✅ CORRECT
+  return now >= jobEndDateTime;
+};
 
   const fetchJobDetails = async () => {
     try {

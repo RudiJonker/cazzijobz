@@ -13,6 +13,7 @@ import { useSupabase } from '../../hooks/useSupabase';
 import { storageService } from '../../utils/storageService';
 import { COLORS, SIZES } from '../../styles/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { formatLocalTime } from '../../utils/timeUtils';
 
 export default function WorkerJobsScreen({ navigation }) {
   const { user } = useSupabase();
@@ -23,33 +24,31 @@ export default function WorkerJobsScreen({ navigation }) {
   const [lastRefreshTime, setLastRefreshTime] = useState(null);
   const [dataStale, setDataStale] = useState(false);
 
-  // Check if API call is allowed (spam prevention)
   const isRefreshAllowed = async () => {
     const storedRefreshTime = await storageService.getLastJobsRefresh();
-    
+
     if (!storedRefreshTime) {
       console.log('⏱️ First worker refresh allowed - no previous refresh time');
       return true;
     }
-    
+
     const now = new Date();
     const lastCall = new Date(storedRefreshTime);
     const timeSinceLastCall = (now - lastCall) / 1000;
     const timeout = 60;
-    
+
     const allowed = timeSinceLastCall >= timeout;
-    
+
     console.log('⏱️ Worker Refresh Check:', {
       allowed,
       lastCall: storedRefreshTime,
       timeSinceLastCall: `${timeSinceLastCall}s`,
       timeout: `${timeout}s`
     });
-    
+
     return allowed;
   };
 
-  // Load user profile to get city for filtering
   useEffect(() => {
     const loadUserProfile = async () => {
       try {
@@ -66,15 +65,14 @@ export default function WorkerJobsScreen({ navigation }) {
     loadUserProfile();
   }, []);
 
-  // Helper function to add application status to jobs
   const addApplicationStatusToJobs = async (jobs, userId) => {
     if (!jobs || jobs.length === 0) return jobs;
-    
+
     try {
       console.log('🔍 Checking application status for', jobs.length, 'jobs');
-      
+
       const jobIds = jobs.map(job => job.id);
-      
+
       const { data: applications, error } = await supabase
         .from('applications')
         .select('job_id, status')
@@ -87,7 +85,7 @@ export default function WorkerJobsScreen({ navigation }) {
       }
 
       console.log('✅ Found', applications?.length || 0, 'applications for user');
-      
+
       const applicationMap = {};
       if (applications) {
         applications.forEach(app => {
@@ -95,12 +93,10 @@ export default function WorkerJobsScreen({ navigation }) {
         });
       }
 
-      const jobsWithStatus = jobs.map(job => ({
+      return jobs.map(job => ({
         ...job,
         application_status: applicationMap[job.id] || null
       }));
-
-      return jobsWithStatus;
 
     } catch (error) {
       console.error('❌ Error in addApplicationStatusToJobs:', error);
@@ -110,7 +106,7 @@ export default function WorkerJobsScreen({ navigation }) {
 
   const fetchAvailableJobs = async (forceRefresh = false) => {
     console.log('🔄 Worker fetchAvailableJobs called, forceRefresh:', forceRefresh);
-    
+
     if (forceRefresh) {
       const refreshAllowed = await isRefreshAllowed();
       if (!refreshAllowed) {
@@ -119,7 +115,7 @@ export default function WorkerJobsScreen({ navigation }) {
         return;
       }
     }
-    
+
     let currentUser = user;
     if (!currentUser) {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -134,11 +130,9 @@ export default function WorkerJobsScreen({ navigation }) {
     }
 
     try {
-      // STEP 1: Always load from local storage first (immediate)
       const localJobs = await storageService.getAvailableJobs();
       console.log('💾 Local available jobs found:', localJobs?.length || 0);
-      
-      // FIXED: Handle null case properly
+
       if (localJobs !== null && localJobs !== undefined && localJobs.length > 0) {
         const jobsWithStatus = await addApplicationStatusToJobs(localJobs, currentUser.id);
         setJobs(jobsWithStatus);
@@ -146,10 +140,9 @@ export default function WorkerJobsScreen({ navigation }) {
         setDataStale(false);
       }
 
-      // STEP 2: Only make API call if explicitly requested (pull-to-refresh)
       if (forceRefresh) {
         console.log('📥 TYPE A CALL - Worker manual refresh from Supabase');
-        
+
         let query = supabase
           .from('jobs')
           .select('*')
@@ -166,23 +159,22 @@ export default function WorkerJobsScreen({ navigation }) {
         if (error) throw error;
 
         console.log('✅ Available jobs fetched:', data?.length || 0);
-        
+
         if (data && data.length > 0) {
           const jobsWithStatus = await addApplicationStatusToJobs(data, currentUser.id);
-          
-          // FIXED: Save the jobs with application status to storage
+
           console.log('💾 Saving available jobs to storage:', data.length, 'jobs');
-          await storageService.setAvailableJobs(data); // Save original data without status
+          await storageService.setAvailableJobs(data);
           console.log('✅ Available jobs saved to storage successfully');
-          
+
           setJobs(jobsWithStatus);
           setDataStale(false);
-          
+
           const refreshTime = new Date().toISOString();
           await storageService.setLastJobsRefresh(refreshTime);
           setLastRefreshTime(refreshTime);
           console.log('✅ Worker manual refresh completed - time saved to storage');
-          
+
           const verifyJobs = await storageService.getAvailableJobs();
           console.log('🔍 Verification - jobs in storage:', verifyJobs?.length || 0);
         } else if (data && data.length === 0) {
@@ -195,9 +187,8 @@ export default function WorkerJobsScreen({ navigation }) {
 
     } catch (error) {
       console.error('💥 Error fetching available jobs:', error);
-      
+
       const localJobs = await storageService.getAvailableJobs();
-      // FIXED: Handle null case in error fallback
       if (localJobs !== null && localJobs !== undefined && localJobs.length > 0) {
         console.log('🔄 Using local data due to Supabase error');
         const jobsWithStatus = await addApplicationStatusToJobs(localJobs, currentUser.id);
@@ -214,43 +205,40 @@ export default function WorkerJobsScreen({ navigation }) {
     }
   };
 
-  // FIXED: Initial load - handle null storage properly
   useEffect(() => {
     const initializeJobs = async () => {
-      // Only initialize if we have a real city value (not empty string)
       if (!userCity || userCity === '') {
         console.log('📍 Waiting for valid city...');
         return;
       }
-      
+
       console.log('🚀 WorkerJobsScreen mounted - loading from local storage');
-      
+
       const storedRefreshTime = await storageService.getLastJobsRefresh();
       if (storedRefreshTime) {
         setLastRefreshTime(storedRefreshTime);
         console.log('⏱️ Worker loaded previous refresh time:', storedRefreshTime);
       }
-      
+
       let currentUser = user;
       if (!currentUser) {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         currentUser = authUser;
       }
-      
+
       const localJobs = await storageService.getAvailableJobs();
       console.log('💾 Local jobs from storage:', localJobs);
-      
-      // FIXED: Handle both null and empty array cases
+
       if (localJobs !== null && localJobs !== undefined) {
         console.log('💾 Showing cached jobs from storage:', localJobs.length, 'jobs');
-        
+
         if (currentUser) {
           const jobsWithStatus = await addApplicationStatusToJobs(localJobs, currentUser.id);
           setJobs(jobsWithStatus);
         } else {
           setJobs(localJobs);
         }
-        
+
         const now = new Date();
         if (storedRefreshTime) {
           const timeSinceLastRefresh = (now - new Date(storedRefreshTime)) / 1000 / 60;
@@ -263,26 +251,24 @@ export default function WorkerJobsScreen({ navigation }) {
         console.log('💾 No cached jobs found in storage - will show empty state');
         setJobs([]);
       }
-      
+
       console.log('✅ WorkerJobsScreen initialization complete');
       setLoading(false);
     };
 
-    // Only initialize if we have a valid city
     if (userCity && userCity !== '') {
       console.log('📍 Initializing jobs with city:', userCity);
       initializeJobs();
     }
   }, [userCity]);
 
-  // Navigation focus - ONLY set stale indicator, NO API calls
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       console.log('🎯 WorkerJobsScreen focused - NO API calls');
-      
+
       const now = new Date();
       const isStale = !lastRefreshTime || (now - new Date(lastRefreshTime)) > 300000;
-      
+
       if (isStale) {
         setDataStale(true);
         console.log('📱 Worker data may be stale - showing refresh indicator');
@@ -291,19 +277,17 @@ export default function WorkerJobsScreen({ navigation }) {
     return unsubscribe;
   }, [navigation, lastRefreshTime]);
 
-  // Add safety timeout to prevent infinite loading
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (loading) {
         console.log('⚠️ Safety timeout - forcing loading to false');
         setLoading(false);
       }
-    }, 5000); // 5 second timeout
+    }, 5000);
 
     return () => clearTimeout(safetyTimeout);
   }, [loading]);
 
-  // Pull to refresh - ONLY manual API calls allowed
   const onRefresh = () => {
     console.log('⬇️ Worker pull to refresh triggered - manual API call');
     setRefreshing(true);
@@ -311,7 +295,7 @@ export default function WorkerJobsScreen({ navigation }) {
   };
 
   const handleViewJob = (job) => {
-    navigation.navigate('WorkerJobDetail', { 
+    navigation.navigate('WorkerJobDetail', {
       jobId: job.id,
       job: job
     });
@@ -330,20 +314,6 @@ export default function WorkerJobsScreen({ navigation }) {
     }
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hour = parseInt(hours);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
-    } catch (error) {
-      return timeString;
-    }
-  };
-
-  // Helper function for status dot colors
   const getStatusDotColor = (job) => {
     if (job.application_status === 'applied') return '#10b981';
     if (job.application_status === 'hired') return '#ef4444';
@@ -363,69 +333,59 @@ export default function WorkerJobsScreen({ navigation }) {
     );
   }
 
-  // Debug log
   console.log('🎯 WorkerJobsScreen render - dataStale:', dataStale, 'jobs count:', jobs.length);
 
   return (
-  <SafeAreaView style={styles.safeArea} edges={['top']}>
-    <View style={styles.container}>
-      {/* UPDATED: Left-aligned header like MyJobsScreen */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>Available Jobs</Text>
-          <Text style={styles.subtitle}>
-            {jobs.length} job{jobs.length !== 1 ? 's' : ''} available
-            {userCity && ` in ${userCity}`}
-            {lastRefreshTime && ` • Updated ${new Date(lastRefreshTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`}
-          </Text>
-        </View>
-          
-          {/* UPDATED: Refresh icon aligned in same row */}
-        {dataStale && (
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={onRefresh}
-          >
-            <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
-        )}
-      </View>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>Available Jobs</Text>
+            <Text style={styles.subtitle}>
+              {jobs.length} job{jobs.length !== 1 ? 's' : ''} available
+              {userCity && ` in ${userCity}`}
+              {lastRefreshTime && ` • Updated ${new Date(lastRefreshTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+            </Text>
+          </View>
 
-        {/* Jobs List */}
-         <ScrollView
-        style={styles.scrollView}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
-          />
+          {dataStale && (
+            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+              <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
           }
         >
           {jobs.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No jobs available</Text>
               <Text style={styles.emptyText}>
-                {userCity 
+                {userCity
                   ? `No open jobs found in ${userCity}. Check back later!`
                   : 'Complete your profile with your location to see local jobs.'
                 }
               </Text>
-              
+
               {!userCity && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.updateProfileButton}
                   onPress={() => navigation.navigate('Profile')}
                 >
                   <Text style={styles.updateProfileText}>Update Profile</Text>
                 </TouchableOpacity>
               )}
-              
-              <TouchableOpacity 
-                style={styles.refreshButtonLarge}
-                onPress={onRefresh}
-              >
+
+              <TouchableOpacity style={styles.refreshButtonLarge} onPress={onRefresh}>
                 <Text style={styles.refreshText}>Refresh Jobs</Text>
               </TouchableOpacity>
             </View>
@@ -441,7 +401,7 @@ export default function WorkerJobsScreen({ navigation }) {
                     <Text style={styles.jobReference}>{job.job_reference}</Text>
                     <Text style={styles.jobCategory}>{job.category}</Text>
                   </View>
-                  
+
                   <View style={[
                     styles.statusDot,
                     { backgroundColor: getStatusDotColor(job) }
@@ -455,7 +415,7 @@ export default function WorkerJobsScreen({ navigation }) {
                 <View style={styles.timeRow}>
                   <Text style={styles.date}>{formatDate(job.scheduled_date)}</Text>
                   <Text style={styles.time}>
-                    {formatTime(job.time_from)} - {formatTime(job.time_to)}
+                    {formatLocalTime(job.time_from, job.scheduled_date, job.utc_offset)} - {formatLocalTime(job.time_to, job.scheduled_date, job.utc_offset)}
                   </Text>
                 </View>
 
@@ -480,34 +440,28 @@ const styles = {
     flex: 1,
     backgroundColor: COLORS.white,
   },
-  // UPDATED: Exact same header as MyJobsScreen - left aligned
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start', // Changed from 'center' to 'flex-start'
+    alignItems: 'flex-start',
     padding: SIZES.padding,
     paddingBottom: SIZES.padding / 2,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray200,
-    
   },
   headerLeft: {
     flex: 1,
-    // REMOVED: alignItems: 'center' - this makes it left-aligned
   },
   title: {
     fontSize: SIZES.xLarge,
     fontWeight: 'bold',
     color: COLORS.primary,
     marginBottom: 4,
-   
-    // REMOVED: textAlign: 'center' - this makes it left-aligned
   },
   subtitle: {
     fontSize: SIZES.small,
     color: COLORS.gray600,
-    // REMOVED: textAlign: 'center' - this makes it left-aligned
   },
   refreshButton: {
     padding: 8,

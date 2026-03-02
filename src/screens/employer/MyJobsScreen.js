@@ -212,25 +212,28 @@ export default function MyJobsScreen() {
 
   // Check if any active jobs have passed their end time
   const checkForJobsToFinalize = (jobsList) => {
-    if (showFinalizeModal) return; // Don't show if already showing
+  if (showFinalizeModal) return;
 
-    const now = new Date();
-    const jobNeedingFinalization = jobsList.find(job => {
-      if (job.status !== 'active') return false;
-      if (!job.time_to || !job.scheduled_date) return false;
-      const [hours, minutes] = job.time_to.split(':').map(Number);
-      const jobEnd = new Date(job.scheduled_date);
-      jobEnd.setHours(hours, minutes, 0, 0);
-      return now >= jobEnd;
-    });
+  const now = new Date();
+  const jobNeedingFinalization = jobsList.find(job => {
+    if (job.status !== 'active') return false;
+    if (!job.time_to || !job.scheduled_date) return false;
 
-    if (jobNeedingFinalization) {
-      console.log('⭐ Job ready to finalize:', jobNeedingFinalization.job_reference);
-      setJobToFinalize(jobNeedingFinalization);
-      setSelectedRating(0);
-      setShowFinalizeModal(true);
-    }
-  };
+    // Build end time as UTC since time_to is stored in UTC
+    const [hours, minutes] = job.time_to.split(':').map(Number);
+    const jobEnd = new Date(job.scheduled_date);
+    jobEnd.setUTCHours(hours, minutes, 0, 0);
+
+    return now >= jobEnd;
+  });
+
+  if (jobNeedingFinalization) {
+    console.log('⭐ Job ready to finalize:', jobNeedingFinalization.job_reference);
+    setJobToFinalize(jobNeedingFinalization);
+    setSelectedRating(0);
+    setShowFinalizeModal(true);
+  }
+};
 
   const handleConfirmFinalize = async () => {
     if (selectedRating === 0) {
